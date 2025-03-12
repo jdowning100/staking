@@ -1,0 +1,43 @@
+replicaCount: 1
+env: production
+nameOverride: ""
+fullnameOverride: ""
+cron:
+  schedule: 0 * * * *
+  endpoint: /api/fractalstats
+secret:
+  nextAuthSecretName: quai-claims
+  discordClientIdSecretName: quai-claims
+  discordClientSecretSecretName: quai-claims
+  uploadSecretSecretName: quai-claims
+  databaseUserSecretName: quai-claims
+  databasePasswordSecretName: quai-claims
+  databaseHostSecretName: quai-claims
+  databasePortSecretName: quai-claims
+  databaseNameSecretName: quai-claims
+  discordServerIdSecretName: quai-claims
+  botTokenSecretName: quai-claims
+  ipAdminSecretName: quai-claims
+  ironGoldenBadgesSecretName: quai-claims
+  fractalVerificationLevelSecretName: quai-claims
+  fractalRedirectUriSecretName: quai-claims
+  verifierDomainSecretName: quai-claims
+  resourceDomainSecretName: quai-claims
+  authDomainSecretName: quai-claims
+  frontendDomainSecretName: quai-claims
+  fractalClientSecretSecretName: quai-claims
+  fractalClientIdSecretName: quai-claims
+  klaviyoListIdSecretName: quai-claims
+  klaviyoPrivateKeySecretName: quai-claims
+  klaviyoPublicKeySecretName: quai-claims
+  nextPublicAddressSecretName: quai-claims
+  idAdminSecretName: quai-claims
+  nextPublicEnableTestnetsSecretName: quai-claims
+  nextPublicKycPaymentAddressSecretName: quai-claims
+  coingeckoKeySecretName: quai-claims
+  nextPublicProjectIdSecretName: quai-claims
+quaiClaims:
+  image:
+    repository: quainetwork/quai-claims
+    version: v0.8.0-pre
+    pullPolicy: IfNotPresent

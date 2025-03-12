@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0, 0%, 7%;
+    --foreground: 0, 0%, 93%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 0, 0%, 48%;
+
+    --accent: 0, 0%, 19%;
+    --accent-foreground: 0, 0%, 93%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 0, 0%, 48%;
+    --input: 0, 0%, 43%;
+    --ring: 11, 99%, 45%;
+
+    --radius: 0.5rem;
+
+    --display-2xl-font-size: 72px;
+    --display-2xl-line-height: 90px;
+    --display-2xl-letter-spacing: -2%;
+
+    --display-xl-font-size: 60px;
+    --display-xl-line-height: 72px;
+    --display-xl-letter-spacing: -2%;
+
+    --display-lg-font-size: 48px;
+    --display-lg-line-height: 60px;
+    --display-lg-letter-spacing: -2%;
+
+    --display-md-font-size: 36px;
+    --display-md-line-height: 44px;
+    --display-md-letter-spacing: -2%;
+
+    --display-sm-font-size: 30px;
+    --display-sm-line-height: 38px;
+
+    --display-xs-font-size: 24px;
+    --display-xs-line-height: 32px;
+
+    --text-xl-font-size: 20px;
+    --text-xl-line-height: 30px;
+
+    --text-lg-font-size: 18px;
+    --text-lg-line-height: 28px;
+
+    --text-md-font-size: 16px;
+    --text-md-line-height: 24px;
+
+    --text-sm-font-size: 14px;
+    --text-sm-line-height: 20px;
+
+    --text-xs-font-size: 12px;
+    --text-xs-line-height: 18px;
+
+    --text-2xs-font-size: 10px;
+    --text-2xs-line-height: 18px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border font-satoshi;
+
+    .start-center {
+      justify-content: flex-start;
+      align-items: center;
+    }
+
+    .bg-accent-gradient,
+    .accent-active-gradient:active {
+      background: linear-gradient(0deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.2) 100%), hsl(var(--accent));
+    }
+
+    .scroll::-webkit-scrollbar {
+      position: absolute;
+      width: 4px;
+    }
+
+    .scroll::-webkit-scrollbar-track {
+      @apply bg-gray-5;
+    }
+
+    .scroll::-webkit-scrollbar-thumb {
+      @apply bg-gray-11 rounded-2xl;
+    }
+  }
+  body {
+    @apply bg-gray-1 text-foreground;
+  }
+
+}

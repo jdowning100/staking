@@ -1,0 +1,5 @@
+dist/
+webDist/
+node_modules/
+.next/
+*.json

@@ -1,0 +1,194 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MultiBeneficiaryVesting",
+  "sourceName": "contracts/MultiBeneficiaryVesting.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "beneficiary",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "TokensReleased",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "beneficiary",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "totalAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "startBlock",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "durationInBlocks",
+          "type": "uint64"
+        }
+      ],
+      "name": "VestingScheduleAdded",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "beneficiary",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint64",
+              "name": "startBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "durationInBlocks",
+              "type": "uint64"
+            }
+          ],
+          "internalType": "struct MultiBeneficiaryVesting.VestingScheduleInput[]",
+          "name": "schedules",
+          "type": "tuple[]"
+        }
+      ],
+      "name": "addBeneficiaries",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "beneficiaries",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "totalAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "releasedAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint64",
+          "name": "startBlock",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "durationInBlocks",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getBalance",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "beneficiary",
+          "type": "address"
+        }
+      ],
+      "name": "getClaimableAmount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "release",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "revokeOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
+    }
+  ]
+} 

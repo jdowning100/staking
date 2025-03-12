@@ -1,0 +1,25 @@
+name: Deploy to Sandbox
+on: workflow_dispatch
+jobs:
+  call-common-workflow:
+    uses: dominant-strategies/quai-cicd/.github/workflows/deploy-sandbox-common.yml@main
+    with:
+      needs_build: true
+      needs_docker: true
+      needs_export: false
+      install_command: "npm ci"
+      cloud_deploy: true
+      skip_deploy: false
+      env: "quai-sandbox"
+      update_version: true
+      gcp_project_id: "flash-gasket-349320"
+      token_secret_name: "gke-sandbox-token"
+    secrets:
+      DOCKER: ${{ secrets.DOCKER }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      KUBE_CONFIG: ${{ secrets.KUBECONFIG_SANDBOX }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY2 }}
+      GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+      GH_GCP_TOKEN: ${{ secrets.GH_GCP_TOKEN }}
+      BUILD_ARGS: 'NEXT_PUBLIC_INTERCOM_APP_ID=crmoyy2i,NEXT_PUBLIC_ADDRESS=https://claims.sandbox.qu.ai,NEXT_PUBLIC_PROJECT_ID=169d0b6c2496e7b36b210a91a7215a09,NEXT_PUBLIC_KYC_PAYMENT_ADDRESS=0x72bB98f9de3FA19614375D860bD3973e44dAB3B8,NEXT_PUBLIC_ENABLE_TESTNETS=false,ID_ADMIN=1235140843766288455,,1252955036820963331,,474440190480613397,IP_ADMIN=46.229.60.129,,46.39.148.182,,72.182.96.176'
+      DOCKER_BUILD_ARGS: 'NEXT_PUBLIC_INTERCOM_APP_ID=crmoyy2i,NEXT_PUBLIC_ADDRESS=https://claims.sandbox.qu.ai,NEXT_PUBLIC_PROJECT_ID=169d0b6c2496e7b36b210a91a7215a09,NEXT_PUBLIC_KYC_PAYMENT_ADDRESS=0x72bB98f9de3FA19614375D860bD3973e44dAB3B8,NEXT_PUBLIC_ENABLE_TESTNETS=false,ID_ADMIN=1235140843766288455,,1252955036820963331,,474440190480613397,IP_ADMIN=46.229.60.129,,46.39.148.182,,72.182.96.176'

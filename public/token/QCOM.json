@@ -1,0 +1,10 @@
+{
+    "description":"Quai Network Commemorative NFT",
+    "external_url":"https://nft.qu.ai",
+    "image":"https://nft.qu.ai/token/QCOM.mp4",
+    "name":"QCOM",
+    "attributes":[{
+        "trait_type":"Publisher",
+        "value":"Quai Network"
+    }]
+}
