@@ -1,8 +1,8 @@
 // Network and Provider Constants
-export const RPC_URL = 'https://rpc.quai.network';
+export const RPC_URL = 'https://orchard.rpc.quai.network';
 
 // Vesting Contract Constants
-export const VESTING_CONTRACT_ADDRESS = '0x001234567890123456789012345678901234567A'; // Placeholder address
+export const VESTING_CONTRACT_ADDRESS = '0x006ec74887Ec9c0226F2b446af886f20A6e7845B'; // IMPORTANT: Replace with actual production contract address before deployment
 
 // UI Constants
 export const APP_TITLE = 'Quai Token Vesting Claims';

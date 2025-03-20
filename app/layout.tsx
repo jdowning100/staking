@@ -58,7 +58,7 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={cn(
-          `bg-gray-1 fonts-sans antialiased ${satoshiFont.variable} ${monoramaFont.variable} ${inter.className}`
+          `bg-[#0C0C0C] text-white antialiased ${satoshiFont.variable} ${monoramaFont.variable} ${inter.className}`
         )}
       >
         <StateProvider>

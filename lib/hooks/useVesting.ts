@@ -1,8 +1,11 @@
-import { Contract, JsonRpcProvider, Shard, formatQuai } from 'quais';
+import { Contract, JsonRpcProvider, Shard, formatQuai as formatQuaiOriginal } from 'quais';
 import { useContext, useState, useEffect, useCallback } from 'react';
 import { StateContext } from '@/store';
 import VestingContract from '@/lib/Vesting.json';
 import { RPC_URL, VESTING_CONTRACT_ADDRESS } from '@/lib/config';
+
+// Re-export formatQuai for use in other components
+export const formatQuai = formatQuaiOriginal;
 
 export interface VestingSchedule {
   totalAmount: string;
@@ -15,6 +18,8 @@ export interface VestingSchedule {
   rawClaimableAmount: bigint;
   progress: number;
   currentBlock: number;
+  contractBalance: bigint;
+  userQuaiBalance: bigint;
 }
 
 export function useVesting() {
@@ -47,7 +52,7 @@ export function useVesting() {
       const startBlock = Number(beneficiaryData.startBlock);
       const durationInBlocks = Number(beneficiaryData.durationInBlocks);
 
-      // Get claimable amount
+      // Get claimable amount - passing address as required by the contract
       const rawClaimableAmount = await vestingContract.getClaimableAmount(account.addr);
 
       // Calculate progress
@@ -65,6 +70,18 @@ export function useVesting() {
       const releasedAmount = formatQuai(rawReleasedAmount);
       const claimableAmount = formatQuai(rawClaimableAmount);
 
+      // Check contract balance
+      const contractBalance = await vestingContract.getBalance();
+
+      if (contractBalance < claimableAmount) {
+        throw new Error(
+          `Contract does not have enough tokens to release. Contract balance: ${formatQuai(contractBalance)} QUAI, Required: ${formatQuai(claimableAmount)} QUAI`
+        );
+      }
+
+      // Get user's QUAI balance
+      const userQuaiBalance = await provider.getBalance(account.addr);
+
       setVestingSchedule({
         totalAmount,
         releasedAmount,
@@ -76,10 +93,11 @@ export function useVesting() {
         rawClaimableAmount,
         progress,
         currentBlock: blockNumber,
+        contractBalance: await vestingContract.getBalance(),
+        userQuaiBalance,
       });
     } catch (error) {
-      console.error('Error loading vesting schedule:', error);
-      setError('Failed to load vesting schedule. Please try again.');
+      setError('Failed to fetch vesting data. Please try again.');
     } finally {
       setIsChecking(false);
     }
@@ -97,13 +115,45 @@ export function useVesting() {
     setError(null);
 
     try {
+      console.log('Starting claim process...');
+      console.log('Account:', account.addr);
+      console.log('Claimable amount:', vestingSchedule.rawClaimableAmount.toString());
+
       const signer = await web3Provider.getSigner();
+      console.log('Got signer, creating contract instance...');
+
       const vestingContract = new Contract(VESTING_CONTRACT_ADDRESS, VestingContract.abi, signer);
+      console.log('Contract instance created, calling release()...');
+
+      // Log contract state before claim
+      const beneficiaryData = await vestingContract.beneficiaries(account.addr);
+      console.log('Current beneficiary data:', {
+        totalAmount: beneficiaryData.totalAmount.toString(),
+        releasedAmount: beneficiaryData.releasedAmount.toString(),
+        startBlock: beneficiaryData.startBlock.toString(),
+        durationInBlocks: beneficiaryData.durationInBlocks.toString(),
+      });
+
+      // Log current block from state
+      console.log('Current block:', currentBlock);
+
+      const claimableAmount = await vestingContract.getClaimableAmount(account.addr);
+      console.log('Contract-reported claimable amount:', claimableAmount.toString());
+
+      // Check contract balance
+      const contractBalance = await vestingContract.getBalance();
+      console.log('Contract balance:', contractBalance.toString());
+
+      if (contractBalance < claimableAmount) {
+        throw new Error('Contract does not have enough tokens to release');
+      }
 
       const tx = await vestingContract.release();
+      console.log('Transaction sent:', tx.hash);
       setTransactionHash(tx.hash);
 
       await tx.wait();
+      console.log('Transaction confirmed');
 
       // Reload vesting schedule after claim
       await loadVestingSchedule();
@@ -127,17 +177,6 @@ export function useVesting() {
     } else {
       setVestingSchedule(null);
     }
-  }, [account, loadVestingSchedule]);
-
-  // Check for updates every 15 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (account?.addr) {
-        loadVestingSchedule();
-      }
-    }, 15000);
-
-    return () => clearInterval(interval);
   }, [account, loadVestingSchedule]);
 
   return {

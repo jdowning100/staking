@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { VestingSchedule } from '@/lib/hooks/useVesting';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { TOKEN_SYMBOL } from '@/lib/config';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatQuai } from '@/lib/hooks/useVesting';
 
 interface VestingInfoProps {
   vestingSchedule: VestingSchedule | null;
@@ -17,6 +18,8 @@ interface VestingInfoProps {
 }
 
 export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, onRefresh, error }: VestingInfoProps) {
+  const [showDetails, setShowDetails] = useState(false);
+
   if (isChecking) {
     return (
       <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
@@ -56,6 +59,16 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     );
   }
 
+  // Calculate estimated time until next unlock
+  const AVERAGE_BLOCK_TIME = 5; // seconds per block
+  const blocksUntilNextUnlock =
+    vestingSchedule.currentBlock < vestingSchedule.startBlock
+      ? vestingSchedule.startBlock - vestingSchedule.currentBlock
+      : 0;
+  const secondsUntilNextUnlock = blocksUntilNextUnlock * AVERAGE_BLOCK_TIME;
+  const hoursUntilNextUnlock = Math.floor(secondsUntilNextUnlock / 3600);
+  const daysUntilNextUnlock = Math.floor(hoursUntilNextUnlock / 24);
+
   return (
     <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
       <CardHeader>
@@ -67,6 +80,24 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
       <CardContent className="space-y-4">
         {error && <div className="p-3 bg-red-500/10 text-red-400 rounded-md text-sm mb-4">{error}</div>}
 
+        {/* Add warning for insufficient contract balance */}
+        {vestingSchedule.contractBalance && vestingSchedule.contractBalance < vestingSchedule.rawClaimableAmount && (
+          <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4">
+            Warning: The contract does not have enough tokens to fulfill your claim. Contract balance:{' '}
+            {formatQuai(vestingSchedule.contractBalance)} QUAI, Required: {vestingSchedule.claimableAmount} QUAI
+          </div>
+        )}
+
+        {/* Add warning for insufficient QUAI balance */}
+        {vestingSchedule.userQuaiBalance !== undefined &&
+          vestingSchedule.userQuaiBalance < BigInt(1000000000000000) && (
+            <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4">
+              Warning: You have insufficient QUAI balance to cover transaction fees. Current balance:{' '}
+              {formatQuai(vestingSchedule.userQuaiBalance)} QUAI. You need at least 0.001 QUAI to cover transaction
+              fees.
+            </div>
+          )}
+
         <div className="space-y-2">
           <div className="flex justify-between">
             <span className="text-[#999999]">Total Allocation</span>
@@ -75,13 +106,13 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[#999999]">Released Amount</span>
+            <span className="text-[#999999]">Claimed Amount</span>
             <span className="font-medium text-white">
               {vestingSchedule.releasedAmount} {TOKEN_SYMBOL}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[#999999]">Claimable Now</span>
+            <span className="text-[#999999]">Claimable Amount</span>
             <span className="font-semibold text-red-9">
               {vestingSchedule.claimableAmount} {TOKEN_SYMBOL}
             </span>
@@ -96,24 +127,99 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
           <Progress value={vestingSchedule.progress} className="h-2 bg-[#333333]" />
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
-          <div className="space-y-1">
-            <p className="text-[#999999]">Start Block</p>
-            <p className="font-medium text-white">{vestingSchedule.startBlock}</p>
+        {/* Details toggle button */}
+        <Button
+          variant="outline"
+          onClick={() => setShowDetails(!showDetails)}
+          className="w-full mt-2 border-[#333333] text-[#999999] hover:bg-[#222222] flex items-center justify-center"
+        >
+          {showDetails ? (
+            <>
+              <ChevronUp className="w-4 h-4 mr-2" />
+              Hide Details
+            </>
+          ) : (
+            <>
+              <ChevronDown className="w-4 h-4 mr-2" />
+              Show Details
+            </>
+          )}
+        </Button>
+
+        {/* Detailed information (only shown when toggled) */}
+        {showDetails && (
+          <div className="mt-4 pt-4 border-t border-[#333333] space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="space-y-1">
+                <p className="text-[#999999]">Current Block</p>
+                <p className="font-medium text-white">
+                  <a
+                    href={`https://quaiscan.io/block/${vestingSchedule.currentBlock}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center hover:text-red-9"
+                  >
+                    {vestingSchedule.currentBlock}
+                    <ExternalLink className="w-3 h-3 ml-1" />
+                  </a>
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[#999999]">Start Block</p>
+                <p className="font-medium text-white">
+                  <a
+                    href={`https://quaiscan.io/block/${vestingSchedule.startBlock}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center hover:text-red-9"
+                  >
+                    {vestingSchedule.startBlock}
+                    <ExternalLink className="w-3 h-3 ml-1" />
+                  </a>
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[#999999]">End Block</p>
+                <p className="font-medium text-white">
+                  <a
+                    href={`https://quaiscan.io/block/${vestingSchedule.startBlock + vestingSchedule.durationInBlocks}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center hover:text-red-9"
+                  >
+                    {vestingSchedule.startBlock + vestingSchedule.durationInBlocks}
+                    <ExternalLink className="w-3 h-3 ml-1" />
+                  </a>
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[#999999]">Duration</p>
+                <p className="font-medium text-white">{vestingSchedule.durationInBlocks} blocks</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[#999999]">Estimated Time Until Complete</p>
+              <p className="font-medium text-white">
+                {vestingSchedule.progress < 100
+                  ? `~${Math.ceil((((100 - vestingSchedule.progress) / 100) * vestingSchedule.durationInBlocks * AVERAGE_BLOCK_TIME) / 86400)} days`
+                  : 'Vesting Complete'}
+              </p>
+            </div>
+
+            {vestingSchedule.currentBlock < vestingSchedule.startBlock && (
+              <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm">
+                <p>
+                  Vesting hasn&apos;t started yet.{' '}
+                  {daysUntilNextUnlock > 0
+                    ? `~${daysUntilNextUnlock} days remaining`
+                    : `~${hoursUntilNextUnlock} hours remaining`}{' '}
+                  until the vesting period begins.
+                </p>
+              </div>
+            )}
           </div>
-          <div className="space-y-1">
-            <p className="text-[#999999]">End Block</p>
-            <p className="font-medium text-white">{vestingSchedule.startBlock + vestingSchedule.durationInBlocks}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[#999999]">Duration</p>
-            <p className="font-medium text-white">{vestingSchedule.durationInBlocks} blocks</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[#999999]">Current Block</p>
-            <p className="font-medium text-white">{vestingSchedule.currentBlock}</p>
-          </div>
-        </div>
+        )}
       </CardContent>
       <CardFooter className="flex gap-4">
         <Button

@@ -9,8 +9,7 @@
     "dev": "next dev",
     "build": "echo Building with NEXT_PUBLIC_PROJECT_ID=$NEXT_PUBLIC_PROJECT_ID NEXT_PUBLIC_ADDRESS=$NEXT_PUBLIC_ADDRESS NEXT_PUBLIC_ENABLE_TESTNETS=$NEXT_PUBLIC_ENABLE_TESTNETS NEXT_PUBLIC_KYC_PAYMENT_ADDRESS=$NEXT_PUBLIC_KYC_PAYMENT_ADDRESS && next build",
     "start": "next start",
-    "lint": "next lint",
-    "prepare": "husky"
+    "lint": "next lint"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.1.2",
@@ -31,7 +30,7 @@
     "lucide-react": "^0.373.0",
     "next": "^14.2.22",
     "pino-pretty": "^11.3.0",
-    "quais": "^1.0.0-alpha.32",
+    "quais": "^1.0.0-alpha.42",
     "react": "^18.3.1",
     "react-confetti": "^6.2.2",
     "react-dom": "^18",

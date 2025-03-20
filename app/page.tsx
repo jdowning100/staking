@@ -2,15 +2,22 @@
 import React, { useContext } from 'react';
 import { VestingInfo } from '@/components/ui';
 import { StateContext } from '@/store';
-import { cn } from '@/lib/utils';
-import { APP_TITLE, APP_DESCRIPTION } from '@/lib/config';
-import { useMockVesting } from '@/lib/hooks/useMockVesting';
+import { APP_TITLE } from '@/lib/config';
+import { useVesting } from '@/lib/hooks/useVesting';
 
 export default function Home() {
   const { account } = useContext(StateContext);
-  const { vestingSchedule, isChecking, isClaiming, error, claimTokens, refreshData } = useMockVesting();
+  const vestingData = useVesting();
 
-  const showVestingInfo = true;
+  // Use optional chaining to safely access properties
+  const vestingProps = {
+    vestingSchedule: vestingData?.vestingSchedule || null,
+    isChecking: !!vestingData?.isChecking,
+    isClaiming: !!vestingData?.isClaiming,
+    onClaim: vestingData?.claimTokens || (() => Promise.resolve()),
+    onRefresh: vestingData?.refreshData || (() => {}),
+    error: vestingData?.error || null,
+  };
 
   return (
     <main className="flex min-h-screen flex-col items-center pt-28 pb-8 px-4 bg-background">
@@ -19,15 +26,23 @@ export default function Home() {
       </div>
 
       <div className="w-full max-w-md mx-auto">
-        {account?.addr || showVestingInfo ? (
-          <VestingInfo
-            vestingSchedule={vestingSchedule}
-            isChecking={isChecking}
-            isClaiming={isClaiming}
-            onClaim={claimTokens}
-            onRefresh={refreshData}
-            error={error}
-          />
+        {/* Transaction notification for confirmed claims */}
+        {vestingData?.transactionHash && (
+          <div className="p-4 bg-green-500/10 text-green-400 rounded-md text-sm mb-4 flex justify-between items-center">
+            <span>Transaction confirmed!</span>
+            <a
+              href={`https://quaiscan.io/tx/${vestingData.transactionHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs underline"
+            >
+              View on Explorer
+            </a>
+          </div>
+        )}
+
+        {account?.addr ? (
+          <VestingInfo {...vestingProps} />
         ) : (
           <div className="flex items-center justify-center h-64">
             <p className="text-[#999999] text-sm font-medium italic">
