@@ -1,179 +1,54 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "quai-claims.fullname" . }}
+  name: {{ include "token-vesting-claim-site.fullname" . }}
   labels:
-    {{- include "quai-claims.labels" . | nindent 4 }}
+    {{- include "token-vesting-claim-site.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "quai-claims.selectorLabels" . | nindent 6 }}
+      {{- include "token-vesting-claim-site.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "quai-claims.selectorLabels" . | nindent 8 }}
+        {{- include "token-vesting-claim-site.selectorLabels" . | nindent 8 }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.quaiClaims.image.repository }}:{{ .Values.quaiClaims.image.version }}"
-          imagePullPolicy: {{ .Values.quaiClaims.image.pullPolicy }}
+          image: "{{ .Values.tokenVestingClaimSite.image.repository }}:{{ .Values.tokenVestingClaimSite.image.version }}"
+          imagePullPolicy: {{ .Values.tokenVestingClaimSite.image.pullPolicy }}
           env:
-            - name: NEXTAUTH_URL
+            - name: NEXT_PUBLIC_RPC_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.nextAuthSecretName }}
-                  key: nextAuthUrl
-            - name: NEXTAUTH_SECRET
+                  name: {{ .Values.secret.nextPublicRpcUrl }}
+                  key: nextPublicRpcUrl
+            - name: NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.nextAuthSecretName }}
-                  key: nextAuthSecret
-            - name: DISCORD_CLIENT_ID
+                  name: {{ .Values.secret.nextPublicContractAddress }}
+                  key: nextPublicContractAddress
+            - name: NEXT_PUBLIC_APP_TITLE
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.discordClientIdSecretName }}
-                  key: discordClientId
-            - name: DISCORD_CLIENT_SECRET
+                  name: {{ .Values.secret.nextPublicAppTitle }}
+                  key: nextPublicAppTitle
+            - name: NEXT_PUBLIC_APP_DESCRIPTION
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.discordClientSecretSecretName }}
-                  key: discordClientSecret
-            - name: UPLOAD_SECRET
+                  name: {{ .Values.secret.nextPublicAppDescription }}
+                  key: nextPublicAppDescription
+            - name: NEXT_PUBLIC_TOKEN_SYMBOL
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.uploadSecretSecretName }}
-                  key: discordClientSecret
-            - name: DATABASE_USER
+                  name: {{ .Values.secret.nextPublicTokenSymbol }}
+                  key: nextPublicTokenSymbol
+            - name: NEXT_PUBLIC_TOKEN_DECIMALS
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.databaseUserSecretName }}
-                  key: databaseUser
-            - name: DATABASE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.databasePasswordSecretName }}
-                  key: databasePassword
-            - name: DATABASE_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.databaseHostSecretName }}
-                  key: databaseHost
-            - name: DATABASE_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.databasePortSecretName }}
-                  key: databasePort
-            - name: DATABASE_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.databaseNameSecretName }}
-                  key: databaseName
-            - name: DISCORD_SERVER_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.discordServerIdSecretName }}
-                  key: discordServerId
-            - name: BOT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.botTokenSecretName }}
-                  key: botToken
-            - name: IP_ADMIN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.ipAdminSecretName }}
-                  key: ipAdmin
-            - name: IRON_GOLDEN_BADGES
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.ironGoldenBadgesSecretName }}
-                  key: ironGoldenBadges
-            - name: FRACTAL_VERIFICATION_LEVEL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.fractalVerificationLevelSecretName }}
-                  key: fractalVerificationLevel
-            - name: FRACTAL_REDIRECT_URI
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.fractalRedirectUriSecretName }}
-                  key: fractalRedirectUri
-            - name: VERIFIER_DOMAIN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.verifierDomainSecretName }}
-                  key: verifierDomain
-            - name: RESOURCE_DOMAIN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.resourceDomainSecretName }}
-                  key: resourceDomain
-            - name: AUTH_DOMAIN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.authDomainSecretName }}
-                  key: authDomain
-            - name: FRONTEND_DOMAIN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.frontendDomainSecretName }}
-                  key: frontendDomain
-            - name: FRACTAL_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.fractalClientSecretSecretName }}
-                  key: fractalClientSecret
-            - name: FRACTAL_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.fractalClientIdSecretName }}
-                  key: fractalClientId
-            - name: KLAVIYO_LIST_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.klaviyoListIdSecretName }}
-                  key: klaviyoListId
-            - name: KLAVIYO_PRIVATE_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.klaviyoPrivateKeySecretName }}
-                  key: klaviyoPrivateKey
-            - name: KLAVIYO_PUBLIC_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.klaviyoPublicKeySecretName }}
-                  key: klaviyoPublicKey
-            - name: NEXT_PUBLIC_ADDRESS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.nextPublicAddressSecretName }}
-                  key: nextPublicAddress
-            - name: ID_ADMIN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.idAdminSecretName }}
-                  key: idAdmin
-            - name: NEXT_PUBLIC_ENABLE_TESTNETS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.nextPublicEnableTestnetsSecretName }}
-                  key: nextPublicEnableTestnets
-            - name: NEXT_PUBLIC_KYC_PAYMENT_ADDRESS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.nextPublicKycPaymentAddressSecretName }}
-                  key: nextPublicKycPaymentAddress
-            - name: COINGECKO_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.coingeckoKeySecretName }}
-                  key: coingeckoKey
-            - name: NEXT_PUBLIC_PROJECT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secret.nextPublicProjectIdSecretName }}
-                  key: nextPublicProjectId
+                  name: {{ .Values.secret.nextPublicTokenDecimals }}
+                  key: nextPublicTokenDecimals
             - name: NODE_ENV
               value: "{{ .Values.env }}"
           ports:
