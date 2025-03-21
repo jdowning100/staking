@@ -15,5 +15,5 @@ secret:
 tokenVestingClaimSite:
   image:
     repository: quainetwork/token-vesting-claims-site
-    version: v0.1.0-pre
+    version: v0.2.0-pre
     pullPolicy: IfNotPresent
