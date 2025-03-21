@@ -27,8 +27,8 @@ spec:
             - name: NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.nextPublicContractAddress }}
-                  key: nextPublicContractAddress
+                  name: {{ .Values.secret.nextPublicVestingContractAddress }}
+                  key: nextPublicVestingContractAddress
             - name: NEXT_PUBLIC_APP_TITLE
               valueFrom:
                 secretKeyRef:
