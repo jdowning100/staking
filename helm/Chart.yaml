@@ -1,5 +1,5 @@
 apiVersion: v2
-name: token-vesting-claims-site
-description: Helm chart for token-vesting-claims-site
+name: token-vesting-claim-site
+description: Helm chart for token-vesting-claim-site
 version: 1.0.0
 appVersion: v0.2.0-pre
