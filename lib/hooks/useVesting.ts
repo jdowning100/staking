@@ -115,50 +115,45 @@ export function useVesting() {
     setError(null);
 
     try {
-      console.log('Starting claim process...');
-      console.log('Account:', account.addr);
-      console.log('Claimable amount:', vestingSchedule.rawClaimableAmount.toString());
-
       const signer = await web3Provider.getSigner();
-      console.log('Got signer, creating contract instance...');
-
       const vestingContract = new Contract(VESTING_CONTRACT_ADDRESS, VestingContract.abi, signer);
-      console.log('Contract instance created, calling release()...');
 
-      // Log contract state before claim
+      // Verify current state before proceeding
       const beneficiaryData = await vestingContract.beneficiaries(account.addr);
-      console.log('Current beneficiary data:', {
-        totalAmount: beneficiaryData.totalAmount.toString(),
-        releasedAmount: beneficiaryData.releasedAmount.toString(),
-        startBlock: beneficiaryData.startBlock.toString(),
-        durationInBlocks: beneficiaryData.durationInBlocks.toString(),
-      });
-
-      // Log current block from state
-      console.log('Current block:', currentBlock);
-
-      const claimableAmount = await vestingContract.getClaimableAmount(account.addr);
-      console.log('Contract-reported claimable amount:', claimableAmount.toString());
-
-      // Check contract balance
+      const currentClaimableAmount = await vestingContract.getClaimableAmount(account.addr);
       const contractBalance = await vestingContract.getBalance();
-      console.log('Contract balance:', contractBalance.toString());
 
-      if (contractBalance < claimableAmount) {
-        throw new Error('Contract does not have enough tokens to release');
+      // Verify claimable amount hasn't changed
+      if (currentClaimableAmount !== vestingSchedule.rawClaimableAmount) {
+        throw new Error('Claimable amount has changed. Please refresh and try again.');
+      }
+
+      // Verify contract balance is sufficient
+      if (contractBalance < currentClaimableAmount) {
+        throw new Error('Contract balance is insufficient. Please try again later.');
       }
 
       const tx = await vestingContract.release();
-      console.log('Transaction sent:', tx.hash);
+
       setTransactionHash(tx.hash);
 
-      await tx.wait();
-      console.log('Transaction confirmed');
+      // Wait for transaction with explicit confirmations
+      const receipt = await tx.wait();
 
-      // Reload vesting schedule after claim
+      // Verify transaction success
+      if (!receipt.status) {
+        throw new Error('Transaction failed');
+      }
+
+      // Verify the claim was successful by checking beneficiary data again
+      const updatedBeneficiaryData = await vestingContract.beneficiaries(account.addr);
+      if (updatedBeneficiaryData.releasedAmount <= beneficiaryData.releasedAmount) {
+        throw new Error('Claim verification failed');
+      }
+
+      // Reload vesting schedule after successful claim
       await loadVestingSchedule();
     } catch (error) {
-      console.error('Error claiming tokens:', error);
       setError('Failed to claim tokens. Please try again.');
     } finally {
       setIsClaiming(false);

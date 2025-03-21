@@ -19,6 +19,29 @@ interface VestingInfoProps {
 
 export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, onRefresh, error }: VestingInfoProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Prevent double submission
+  const handleClaim = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await onClaim();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Validate vesting schedule data
+  const isValidVestingSchedule = (schedule: VestingSchedule) => {
+    return (
+      schedule &&
+      BigInt(schedule.rawTotalAmount) > BigInt(0) &&
+      BigInt(schedule.rawClaimableAmount) >= BigInt(0) &&
+      schedule.startBlock > 0 &&
+      schedule.durationInBlocks > 0
+    );
+  };
 
   if (isChecking) {
     return (
@@ -36,19 +59,17 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     );
   }
 
-  if (!vestingSchedule || BigInt(vestingSchedule.rawTotalAmount) === BigInt(0)) {
+  if (!vestingSchedule || !isValidVestingSchedule(vestingSchedule)) {
     return (
       <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl text-white">No Vesting Schedule Found</CardTitle>
+          <CardTitle className="text-xl text-white">No Valid Vesting Schedule Found</CardTitle>
           <CardDescription className="text-[#999999]">
-            You don&apos;t have any vested tokens in this contract.
+            The vesting schedule data is invalid or corrupted.
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center py-6">
-          <p className="text-[#999999] text-sm">
-            This wallet address is not registered as a beneficiary in the vesting contract.
-          </p>
+          <p className="text-[#999999] text-sm">Please refresh or contact support if the issue persists.</p>
         </CardContent>
         <CardFooter className="flex justify-center pb-6">
           <Button variant="outline" onClick={onRefresh} className="border-[#333333] text-[#999999] hover:bg-[#222222]">
@@ -68,6 +89,15 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
   const secondsUntilNextUnlock = blocksUntilNextUnlock * AVERAGE_BLOCK_TIME;
   const hoursUntilNextUnlock = Math.floor(secondsUntilNextUnlock / 3600);
   const daysUntilNextUnlock = Math.floor(hoursUntilNextUnlock / 24);
+
+  // Validate claim button state
+  const canClaim =
+    !isClaiming &&
+    !isSubmitting &&
+    vestingSchedule &&
+    BigInt(vestingSchedule.rawClaimableAmount) > BigInt(0) &&
+    vestingSchedule.contractBalance >= vestingSchedule.rawClaimableAmount &&
+    vestingSchedule.userQuaiBalance >= BigInt(1000000000000000);
 
   return (
     <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
@@ -92,9 +122,8 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
         {vestingSchedule.userQuaiBalance !== undefined &&
           vestingSchedule.userQuaiBalance < BigInt(1000000000000000) && (
             <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4">
-              Warning: You have insufficient QUAI balance to cover transaction fees. Current balance:{' '}
-              {formatQuai(vestingSchedule.userQuaiBalance)} QUAI. You need at least 0.001 QUAI to cover transaction
-              fees.
+              Warning: You need at least 0.001 QUAI to cover transaction fees. Your balance is{' '}
+              {formatQuai(vestingSchedule.userQuaiBalance)} QUAI.
             </div>
           )}
 
@@ -223,16 +252,11 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
       </CardContent>
       <CardFooter className="flex gap-4">
         <Button
-          onClick={onClaim}
-          className={cn(
-            'flex-1',
-            isClaiming || !vestingSchedule || BigInt(vestingSchedule.rawClaimableAmount) <= BigInt(0)
-              ? 'bg-[#333333] text-[#999999]'
-              : 'bg-red-9 hover:bg-red-10 text-white'
-          )}
-          disabled={isClaiming || !vestingSchedule || BigInt(vestingSchedule.rawClaimableAmount) <= BigInt(0)}
+          onClick={handleClaim}
+          className={cn('flex-1', !canClaim ? 'bg-[#333333] text-[#999999]' : 'bg-red-9 hover:bg-red-10 text-white')}
+          disabled={!canClaim}
         >
-          {isClaiming ? (
+          {isClaiming || isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Claiming...
