@@ -10,7 +10,7 @@ jobs:
       install_command: "npm ci"
       cloud_deploy: true
       skip_deploy: false
-      env: "quai-claims"
+      env: "quai-prod"
       update_version: true
       gcp_project_id: "flash-gasket-349320"
       token_secret_name: "gke-prod-token"
