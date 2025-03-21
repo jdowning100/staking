@@ -3,7 +3,7 @@ export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://orchard.rpc.q
 
 // Vesting Contract Constants
 export const VESTING_CONTRACT_ADDRESS =
-  process.env.NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS || '0x006ec74887Ec9c0226F2b446af886f20A6e7845B';
+  process.env.NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS || '0x0056e37Cf10e1183540E86027D7821A8AE3a7b93';
 
 // UI Constants
 export const APP_TITLE = process.env.NEXT_PUBLIC_APP_TITLE || 'Quai Token Vesting Claims';
