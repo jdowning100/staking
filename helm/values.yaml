@@ -6,12 +6,12 @@ cron:
   schedule: 0 * * * *
   endpoint: /api/fractalstats
 secret:
-  nextPublicRpcUrl: https://orchard.rpc.quai.network
-  nextPublicVestingContractAddress: 0x0056e37Cf10e1183540E86027D7821A8AE3a7b93
-  nextPublicAppTitle: Quai Token Vesting Claims
-  nextPublicAppDescription: Check and claimd your vested QUAI tokens
-  nextPublicTokenSymbol: QUAI
-  nextPublicTokenDecimals: 18
+  nextPublicRpcUrl: token-vesting-claim-site
+  nextPublicVestingContractAddress: token-vesting-claim-site
+  nextPublicAppTitle: token-vesting-claim-site
+  nextPublicAppDescription: token-vesting-claim-site
+  nextPublicTokenSymbol: token-vesting-claim-site
+  nextPublicTokenDecimals: token-vesting-claim-site
 tokenVestingClaimSite:
   image:
     repository: quainetwork/token-vesting-claims-site
