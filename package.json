@@ -1,6 +1,6 @@
 {
   "name": "token-vesting-claim-site",
-  "version": "v0.2.0-pre",
+  "version": "v0.3.0-pre",
   "private": true,
   "engines": {
     "node": "20.x"
