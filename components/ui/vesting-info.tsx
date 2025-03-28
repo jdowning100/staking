@@ -4,7 +4,7 @@ import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { TOKEN_SYMBOL } from '@/lib/config';
 import { Button } from '@/components/ui/button';
-import { Loader2, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp, ExternalLink, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatQuai } from '@/lib/hooks/useVesting';
 
@@ -37,9 +37,9 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     return (
       schedule &&
       BigInt(schedule.rawTotalAmount) > BigInt(0) &&
-      BigInt(schedule.rawClaimableAmount) >= BigInt(0) &&
       schedule.startBlock > 0 &&
-      schedule.durationInBlocks > 0
+      schedule.durationInBlocks > 0 &&
+      schedule.cliffBlock > 0
     );
   };
 
@@ -63,13 +63,13 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     return (
       <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl text-white">No Valid Vesting Schedule Found</CardTitle>
+          <CardTitle className="text-xl text-white">No Vesting Schedule Found</CardTitle>
           <CardDescription className="text-[#999999]">
-            The vesting schedule data is invalid or corrupted.
+            The connected wallet does not have a vesting schedule.
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center py-6">
-          <p className="text-[#999999] text-sm">Please refresh or contact support if the issue persists.</p>
+          <p className="text-[#999999] text-sm">Please refresh or contact support if you believe this is an mistake.</p>
         </CardContent>
         <CardFooter className="flex justify-center pb-6">
           <Button variant="outline" onClick={onRefresh} className="border-[#333333] text-[#999999] hover:bg-[#222222]">
@@ -80,8 +80,10 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     );
   }
 
-  // Calculate estimated time until next unlock
+  // At this point vestingSchedule is guaranteed to be non-null
   const AVERAGE_BLOCK_TIME = 5; // seconds per block
+
+  // Calculate time until next unlock (start)
   const blocksUntilNextUnlock =
     vestingSchedule.currentBlock < vestingSchedule.startBlock
       ? vestingSchedule.startBlock - vestingSchedule.currentBlock
@@ -90,11 +92,22 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
   const hoursUntilNextUnlock = Math.floor(secondsUntilNextUnlock / 3600);
   const daysUntilNextUnlock = Math.floor(hoursUntilNextUnlock / 24);
 
-  // Validate claim button state
+  // Calculate time until cliff is reached
+  const secondsUntilCliff = vestingSchedule.blocksUntilCliff * AVERAGE_BLOCK_TIME;
+  const hoursUntilCliff = Math.floor(secondsUntilCliff / 3600);
+  const daysUntilCliff = Math.floor(hoursUntilCliff / 24);
+  const cliffTimeRemaining =
+    daysUntilCliff > 0
+      ? `~${daysUntilCliff} days`
+      : hoursUntilCliff > 0
+        ? `~${hoursUntilCliff} hours`
+        : `~${Math.ceil(secondsUntilCliff / 60)} minutes`;
+
+  // Determine if claim button should be enabled
   const canClaim =
     !isClaiming &&
     !isSubmitting &&
-    vestingSchedule &&
+    vestingSchedule.cliffReached &&
     BigInt(vestingSchedule.rawClaimableAmount) > BigInt(0) &&
     vestingSchedule.contractBalance >= vestingSchedule.rawClaimableAmount &&
     vestingSchedule.userQuaiBalance >= BigInt(1000000000000000);
@@ -102,7 +115,10 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
   return (
     <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
       <CardHeader>
-        <CardTitle className="text-xl text-white text-center">Your Token Vesting</CardTitle>
+        <CardTitle className="text-xl text-white text-center flex items-center justify-center gap-2">
+          Your Token Vesting
+          {!vestingSchedule.cliffReached && <Lock className="h-5 w-5 text-yellow-400" />}
+        </CardTitle>
         <CardDescription className="text-[#999999] text-center">
           Track and claim your vested {TOKEN_SYMBOL} tokens
         </CardDescription>
@@ -127,6 +143,20 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
             </div>
           )}
 
+        {/* Add warning for cliff not reached */}
+        {!vestingSchedule.cliffReached && (
+          <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4 flex items-start gap-2">
+            <Lock className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium mb-1">Cliff Period Not Reached</p>
+              <p>
+                Your tokens are vesting but you cannot claim them until the cliff period ends in {cliffTimeRemaining} (
+                {vestingSchedule.blocksUntilCliff.toLocaleString()} blocks).
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           <div className="flex justify-between">
             <span className="text-[#999999]">Total Allocation</span>
@@ -141,9 +171,20 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
             </span>
           </div>
           <div className="flex justify-between">
+            <span className="text-[#999999]">Vested Amount</span>
+            <span className="font-semibold text-white">
+              {vestingSchedule.vestedAmount} {TOKEN_SYMBOL}
+            </span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-[#999999]">Claimable Amount</span>
-            <span className="font-semibold text-red-9">
-              {vestingSchedule.claimableAmount} {TOKEN_SYMBOL}
+            <span className={`font-semibold ${vestingSchedule.cliffReached ? 'text-red-9' : 'text-yellow-400'}`}>
+              {vestingSchedule.cliffReached ? vestingSchedule.claimableAmount : '0'} {TOKEN_SYMBOL}
+              {!vestingSchedule.cliffReached && BigInt(vestingSchedule.rawVestedAmount) > BigInt(0) && (
+                <span className="text-xs ml-1 text-yellow-400 justify-center items-center">
+                  <Lock className="h-3 w-3 inline-block" />
+                </span>
+              )}
             </span>
           </div>
         </div>
@@ -208,6 +249,25 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
                 </p>
               </div>
               <div className="space-y-1">
+                <p className="text-[#999999]">Cliff Block</p>
+                <p className="font-medium text-white">
+                  <a
+                    href={`https://quaiscan.io/block/${vestingSchedule.cliffBlock}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center hover:text-red-9"
+                  >
+                    {vestingSchedule.cliffBlock}
+                    <ExternalLink className="w-3 h-3 ml-1" />
+                  </a>
+                  {!vestingSchedule.cliffReached && (
+                    <span className="text-xs ml-2 text-yellow-400">
+                      <Lock className="h-3 w-3 inline-block mr-1" /> {cliffTimeRemaining} remaining
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="space-y-1">
                 <p className="text-[#999999]">End Block</p>
                 <p className="font-medium text-white">
                   <a
@@ -247,6 +307,15 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
                 </p>
               </div>
             )}
+
+            <div className="p-3 rounded-md text-sm bg-[#222222]">
+              <p className="text-white font-medium mb-1">How Vesting Works</p>
+              <p className="text-[#bbbbbb]">
+                Your tokens vest linearly from the start block to the end block. The cliff period only affects when you
+                can claim tokens, not how tokens vest. Once the cliff period is reached, you can claim all tokens that
+                have vested up to that point.
+              </p>
+            </div>
           </div>
         )}
       </CardContent>
@@ -262,7 +331,16 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
               Claiming...
             </>
           ) : (
-            'Claim Tokens'
+            <>
+              {!vestingSchedule.cliffReached ? (
+                <>
+                  <Lock className="mr-2 h-4 w-4" />
+                  Locked Until Cliff
+                </>
+              ) : (
+                'Claim Tokens'
+              )}
+            </>
           )}
         </Button>
         <Button

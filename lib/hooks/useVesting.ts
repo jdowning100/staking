@@ -12,14 +12,19 @@ export interface VestingSchedule {
   releasedAmount: string;
   startBlock: number;
   durationInBlocks: number;
+  cliffBlock: number;
   claimableAmount: string;
+  vestedAmount: string;
   rawTotalAmount: bigint;
   rawReleasedAmount: bigint;
   rawClaimableAmount: bigint;
+  rawVestedAmount: bigint;
   progress: number;
   currentBlock: number;
   contractBalance: bigint;
   userQuaiBalance: bigint;
+  cliffReached: boolean;
+  blocksUntilCliff: number;
 }
 
 export function useVesting() {
@@ -51,11 +56,21 @@ export function useVesting() {
       const rawReleasedAmount = beneficiaryData.releasedAmount;
       const startBlock = Number(beneficiaryData.startBlock);
       const durationInBlocks = Number(beneficiaryData.durationInBlocks);
+      const cliffBlock = Number(beneficiaryData.cliffBlock);
 
       // Get claimable amount - passing address as required by the contract
       const rawClaimableAmount = await vestingContract.getClaimableAmount(account.addr);
 
-      // Calculate progress
+      // Get vested amount (regardless of cliff)
+      const rawVestedAmount = await vestingContract.getVestedAmount(account.addr);
+
+      // Check if cliff has been reached
+      const cliffReached = await vestingContract.hasReachedCliff(account.addr);
+
+      // Calculate blocks until cliff
+      const blocksUntilCliff = cliffBlock > blockNumber ? cliffBlock - blockNumber : 0;
+
+      // Calculate progress based on vested amount (not claimable)
       let progress = 0;
       if (durationInBlocks > 0) {
         if (blockNumber >= startBlock + durationInBlocks) {
@@ -69,13 +84,14 @@ export function useVesting() {
       const totalAmount = formatQuai(rawTotalAmount);
       const releasedAmount = formatQuai(rawReleasedAmount);
       const claimableAmount = formatQuai(rawClaimableAmount);
+      const vestedAmount = formatQuai(rawVestedAmount);
 
       // Check contract balance
       const contractBalance = await vestingContract.getBalance();
 
-      if (contractBalance < claimableAmount) {
+      if (contractBalance < rawClaimableAmount) {
         throw new Error(
-          `Contract does not have enough tokens to release. Contract balance: ${formatQuai(contractBalance)} QUAI, Required: ${formatQuai(claimableAmount)} QUAI`
+          `Contract does not have enough tokens to release. Contract balance: ${formatQuai(contractBalance)} QUAI, Required: ${formatQuai(rawClaimableAmount)} QUAI`
         );
       }
 
@@ -87,14 +103,19 @@ export function useVesting() {
         releasedAmount,
         startBlock,
         durationInBlocks,
+        cliffBlock,
         claimableAmount,
+        vestedAmount,
         rawTotalAmount,
         rawReleasedAmount,
         rawClaimableAmount,
+        rawVestedAmount,
         progress,
         currentBlock: blockNumber,
-        contractBalance: await vestingContract.getBalance(),
+        contractBalance,
         userQuaiBalance,
+        cliffReached,
+        blocksUntilCliff,
       });
     } catch (error) {
       setError('Failed to fetch vesting data. Please try again.');
@@ -106,6 +127,10 @@ export function useVesting() {
   // Claim vested tokens
   const claimTokens = useCallback(async () => {
     if (!account?.addr || !web3Provider || !vestingSchedule) return;
+    if (!vestingSchedule.cliffReached) {
+      setError('Cliff period has not been reached yet. You cannot claim tokens until the cliff period ends.');
+      return;
+    }
     if (vestingSchedule.rawClaimableAmount <= BigInt(0)) {
       setError('No tokens available to claim');
       return;
@@ -122,6 +147,12 @@ export function useVesting() {
       const beneficiaryData = await vestingContract.beneficiaries(account.addr);
       const currentClaimableAmount = await vestingContract.getClaimableAmount(account.addr);
       const contractBalance = await vestingContract.getBalance();
+
+      // Verify cliff has been reached
+      const cliffReached = await vestingContract.hasReachedCliff(account.addr);
+      if (!cliffReached) {
+        throw new Error('Cliff period has not been reached yet. You cannot claim tokens until the cliff period ends.');
+      }
 
       // Verify claimable amount hasn't changed
       if (currentClaimableAmount !== vestingSchedule.rawClaimableAmount) {
