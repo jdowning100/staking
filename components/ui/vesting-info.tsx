@@ -36,10 +36,10 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
   const isValidVestingSchedule = (schedule: VestingSchedule) => {
     return (
       schedule &&
-      BigInt(schedule.rawTotalAmount) > BigInt(0) &&
-      schedule.startBlock > 0 &&
-      schedule.durationInBlocks > 0 &&
-      schedule.cliffBlock > 0
+      schedule.contracts &&
+      schedule.contracts.length > 0 &&
+      schedule.aggregated &&
+      BigInt(schedule.aggregated.rawTotalAmount) > BigInt(0)
     );
   };
 
@@ -83,17 +83,22 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
   // At this point vestingSchedule is guaranteed to be non-null
   const AVERAGE_BLOCK_TIME = 5; // seconds per block
 
+  // Get the earliest start block and cliff from all contracts
+  const earliestStartBlock = Math.min(...vestingSchedule.contracts.map(c => c.startBlock));
+  const earliestCliff = Math.min(...vestingSchedule.contracts.map(c => c.cliffBlock));
+  const minBlocksUntilCliff = Math.min(...vestingSchedule.contracts.map(c => c.blocksUntilCliff));
+
   // Calculate time until next unlock (start)
   const blocksUntilNextUnlock =
-    vestingSchedule.currentBlock < vestingSchedule.startBlock
-      ? vestingSchedule.startBlock - vestingSchedule.currentBlock
+    vestingSchedule.currentBlock < earliestStartBlock
+      ? earliestStartBlock - vestingSchedule.currentBlock
       : 0;
   const secondsUntilNextUnlock = blocksUntilNextUnlock * AVERAGE_BLOCK_TIME;
   const hoursUntilNextUnlock = Math.floor(secondsUntilNextUnlock / 3600);
   const daysUntilNextUnlock = Math.floor(hoursUntilNextUnlock / 24);
 
   // Calculate time until cliff is reached
-  const secondsUntilCliff = vestingSchedule.blocksUntilCliff * AVERAGE_BLOCK_TIME;
+  const secondsUntilCliff = minBlocksUntilCliff * AVERAGE_BLOCK_TIME;
   const hoursUntilCliff = Math.floor(secondsUntilCliff / 3600);
   const daysUntilCliff = Math.floor(hoursUntilCliff / 24);
   const cliffTimeRemaining =
@@ -107,9 +112,7 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
   const canClaim =
     !isClaiming &&
     !isSubmitting &&
-    vestingSchedule.cliffReached &&
-    BigInt(vestingSchedule.rawClaimableAmount) > BigInt(0) &&
-    vestingSchedule.contractBalance >= vestingSchedule.rawClaimableAmount &&
+    vestingSchedule.aggregated.hasClaimableTokens &&
     vestingSchedule.userQuaiBalance >= BigInt(1000000000000000);
 
   return (
@@ -117,7 +120,7 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
       <CardHeader>
         <CardTitle className="text-xl text-white text-center flex items-center justify-center gap-2">
           Your Token Vesting
-          {!vestingSchedule.cliffReached && <Lock className="h-5 w-5 text-yellow-400" />}
+          {vestingSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && <Lock className="h-5 w-5 text-yellow-400" />}
         </CardTitle>
         <CardDescription className="text-[#999999] text-center">
           Track and claim your vested {TOKEN_SYMBOL} tokens
@@ -127,10 +130,9 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
         {error && <div className="p-3 bg-red-500/10 text-red-400 rounded-md text-sm mb-4">{error}</div>}
 
         {/* Add warning for insufficient contract balance */}
-        {vestingSchedule.contractBalance && vestingSchedule.contractBalance < vestingSchedule.rawClaimableAmount && (
+        {vestingSchedule.contracts.some(c => c.contractBalance < c.rawClaimableAmount) && (
           <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4">
-            Warning: The contract does not have enough tokens to fulfill your claim. Contract balance:{' '}
-            {formatQuai(vestingSchedule.contractBalance)} QUAI, Required: {vestingSchedule.claimableAmount} QUAI
+            Warning: One or more contracts do not have enough tokens to fulfill your claim.
           </div>
         )}
 
@@ -144,14 +146,14 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
           )}
 
         {/* Add warning for cliff not reached */}
-        {!vestingSchedule.cliffReached && (
+        {vestingSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && (
           <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4 flex items-start gap-2">
             <Lock className="h-4 w-4 mt-0.5 flex-shrink-0" />
             <div>
               <p className="font-medium mb-1">Cliff Period Not Reached</p>
               <p>
                 Your tokens are vesting but you cannot claim them until the cliff period ends in {cliffTimeRemaining} (
-                {vestingSchedule.blocksUntilCliff.toLocaleString()} blocks).
+                {minBlocksUntilCliff.toLocaleString()} blocks).
               </p>
             </div>
           </div>
@@ -161,26 +163,20 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
           <div className="flex justify-between">
             <span className="text-[#999999]">Total Allocation</span>
             <span className="font-medium text-white">
-              {vestingSchedule.totalAmount} {TOKEN_SYMBOL}
+              {vestingSchedule.aggregated.totalAmount} {TOKEN_SYMBOL}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-[#999999]">Claimed Amount</span>
             <span className="font-medium text-white">
-              {vestingSchedule.releasedAmount} {TOKEN_SYMBOL}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[#999999]">Vested Amount</span>
-            <span className="font-semibold text-white">
-              {vestingSchedule.vestedAmount} {TOKEN_SYMBOL}
+              {vestingSchedule.aggregated.releasedAmount} {TOKEN_SYMBOL}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-[#999999]">Claimable Amount</span>
-            <span className={`font-semibold ${vestingSchedule.cliffReached ? 'text-red-9' : 'text-yellow-400'}`}>
-              {vestingSchedule.cliffReached ? vestingSchedule.claimableAmount : '0'} {TOKEN_SYMBOL}
-              {!vestingSchedule.cliffReached && BigInt(vestingSchedule.rawVestedAmount) > BigInt(0) && (
+            <span className={`font-semibold ${vestingSchedule.aggregated.hasClaimableTokens ? 'text-red-9' : 'text-yellow-400'}`}>
+              {vestingSchedule.aggregated.hasClaimableTokens ? vestingSchedule.aggregated.claimableAmount : '0'} {TOKEN_SYMBOL}
+              {!vestingSchedule.aggregated.hasClaimableTokens && vestingSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && (
                 <span className="text-xs ml-1 text-yellow-400 justify-center items-center">
                   <Lock className="h-3 w-3 inline-block" />
                 </span>
@@ -192,9 +188,9 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
         <div className="pt-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-white">Vesting Progress</span>
-            <span className="text-white">{vestingSchedule.progress.toFixed(2)}%</span>
+            <span className="text-white">{vestingSchedule.aggregated.progress.toFixed(2)}%</span>
           </div>
-          <Progress value={vestingSchedule.progress} className="h-2 bg-[#333333]" />
+          <Progress value={vestingSchedule.aggregated.progress} className="h-2 bg-[#333333]" />
         </div>
 
         {/* Details toggle button */}
@@ -235,68 +231,50 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
                 </p>
               </div>
               <div className="space-y-1">
-                <p className="text-[#999999]">Start Block</p>
-                <p className="font-medium text-white">
-                  <a
-                    href={`https://quaiscan.io/block/${vestingSchedule.startBlock}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center hover:text-red-9"
-                  >
-                    {vestingSchedule.startBlock}
-                    <ExternalLink className="w-3 h-3 ml-1" />
-                  </a>
-                </p>
+                <p className="text-[#999999]">Active Contracts</p>
+                <p className="font-medium text-white">{vestingSchedule.contracts.length}</p>
               </div>
-              <div className="space-y-1">
-                <p className="text-[#999999]">Cliff Block</p>
-                <p className="font-medium text-white">
-                  <a
-                    href={`https://quaiscan.io/block/${vestingSchedule.cliffBlock}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center hover:text-red-9"
-                  >
-                    {vestingSchedule.cliffBlock}
-                    <ExternalLink className="w-3 h-3 ml-1" />
-                  </a>
-                  {!vestingSchedule.cliffReached && (
-                    <span className="text-xs ml-2 text-yellow-400">
-                      <Lock className="h-3 w-3 inline-block mr-1" /> {cliffTimeRemaining} remaining
-                    </span>
+            </div>
+
+            {/* Individual contract details */}
+            <div className="space-y-3">
+              <p className="text-[#999999] font-medium">Contract Details:</p>
+              {vestingSchedule.contracts.map((contract, index) => (
+                <div key={contract.contractAddress} className="p-3 bg-[#222222] rounded-md">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-white font-medium">Contract {index + 1}</p>
+                    <p className="text-xs text-[#999999] font-mono">{contract.contractAddress.slice(0, 10)}...</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-[#999999]">Total: {contract.totalAmount} {TOKEN_SYMBOL}</p>
+                      <p className="text-[#999999]">Claimable: {contract.claimableAmount} {TOKEN_SYMBOL}</p>
+                    </div>
+                    <div>
+                      <p className="text-[#999999]">Start: {contract.startBlock}</p>
+                      <p className="text-[#999999]">Cliff: {contract.cliffBlock}</p>
+                    </div>
+                  </div>
+                  {contract.blocksUntilCliff > 0 && (
+                    <p className="text-yellow-400 text-xs mt-1">
+                      <Lock className="h-3 w-3 inline-block mr-1" />
+                      {contract.blocksUntilCliff} blocks until cliff
+                    </p>
                   )}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[#999999]">End Block</p>
-                <p className="font-medium text-white">
-                  <a
-                    href={`https://quaiscan.io/block/${vestingSchedule.startBlock + vestingSchedule.durationInBlocks}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center hover:text-red-9"
-                  >
-                    {vestingSchedule.startBlock + vestingSchedule.durationInBlocks}
-                    <ExternalLink className="w-3 h-3 ml-1" />
-                  </a>
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[#999999]">Duration</p>
-                <p className="font-medium text-white">{vestingSchedule.durationInBlocks} blocks</p>
-              </div>
+                </div>
+              ))}
             </div>
 
             <div className="space-y-1">
               <p className="text-[#999999]">Estimated Time Until Complete</p>
               <p className="font-medium text-white">
-                {vestingSchedule.progress < 100
-                  ? `~${Math.ceil((((100 - vestingSchedule.progress) / 100) * vestingSchedule.durationInBlocks * AVERAGE_BLOCK_TIME) / 86400)} days`
+                {vestingSchedule.aggregated.progress < 100
+                  ? `~${Math.ceil((((100 - vestingSchedule.aggregated.progress) / 100) * Math.max(...vestingSchedule.contracts.map(c => c.durationInBlocks)) * AVERAGE_BLOCK_TIME) / 86400)} days`
                   : 'Vesting Complete'}
               </p>
             </div>
 
-            {vestingSchedule.currentBlock < vestingSchedule.startBlock && (
+            {vestingSchedule.currentBlock < earliestStartBlock && (
               <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm">
                 <p>
                   Vesting hasn&apos;t started yet.{' '}
@@ -309,11 +287,9 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
             )}
 
             <div className="p-3 rounded-md text-sm bg-[#222222]">
-              <p className="text-white font-medium mb-1">How Vesting Works</p>
+              <p className="text-white font-medium mb-1">How Multiple Contracts Work</p>
               <p className="text-[#bbbbbb]">
-                Your tokens vest linearly from the start block to the end block. The cliff period only affects when you
-                can claim tokens, not how tokens vest. Once the cliff period is reached, you can claim all tokens that
-                have vested up to that point.
+                You have multiple vesting contracts. Each contract vests independently, but you can claim from all contracts at once when their cliff periods are reached.
               </p>
             </div>
           </div>
@@ -332,7 +308,7 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
             </>
           ) : (
             <>
-              {!vestingSchedule.cliffReached ? (
+              {vestingSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) ? (
                 <>
                   <Lock className="mr-2 h-4 w-4" />
                   Locked Until Cliff
