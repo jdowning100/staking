@@ -1,4 +1,4 @@
-# Quai Token Vesting Claims Site
+# Quai Token Claims Site
 
 A simple web application that allows users to connect their Pelagus wallet and check for any vested tokens they may have available to claim from a MultiBeneficiaryVesting contract.
 
@@ -49,7 +49,7 @@ npm install
    NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS=0x006ec74887Ec9c0226F2b446af886f20A6e7845B
 
    # UI Constants
-   NEXT_PUBLIC_APP_TITLE=Quai Token Vesting Claims
+   NEXT_PUBLIC_APP_TITLE=Quai Token Claims
    NEXT_PUBLIC_APP_DESCRIPTION=Check and claim your vested Quai tokens
 
    # Formatting Constants
@@ -87,7 +87,7 @@ npm run dev
 | -------------------------------------- | ------------------------------- | ------------------------------------------ |
 | `NEXT_PUBLIC_RPC_URL`                  | Quai Network RPC endpoint       | https://orchard.rpc.quai.network           |
 | `NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS` | Address of the vesting contract | 0x006ec74887Ec9c0226F2b446af886f20A6e7845B |
-| `NEXT_PUBLIC_APP_TITLE`                | Application title               | Quai Token Vesting Claims                  |
+| `NEXT_PUBLIC_APP_TITLE`                | Application title               | Quai Token Claims                          |
 | `NEXT_PUBLIC_APP_DESCRIPTION`          | Application description         | Check and claim your vested Quai tokens    |
 | `NEXT_PUBLIC_TOKEN_SYMBOL`             | Token symbol                    | QUAI                                       |
 | `NEXT_PUBLIC_TOKEN_DECIMALS`           | Token decimals                  | 18                                         |

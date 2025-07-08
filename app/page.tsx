@@ -1,22 +1,22 @@
 'use client';
 import React, { useContext } from 'react';
-import { VestingInfo } from '@/components/ui';
+import { ClaimInfo } from '@/components/ui';
 import { StateContext } from '@/store';
 import { APP_TITLE } from '@/lib/config';
-import { useVesting } from '@/lib/hooks/useVesting';
+import { useClaims } from '@/lib/hooks/useVesting';
 
 export default function Home() {
   const { account } = useContext(StateContext);
-  const vestingData = useVesting();
+  const claimData = useClaims();
 
   // Use optional chaining to safely access properties
-  const vestingProps = {
-    vestingSchedule: vestingData?.vestingSchedule || null,
-    isChecking: !!vestingData?.isChecking,
-    isClaiming: !!vestingData?.isClaiming,
-    onClaim: vestingData?.claimTokens || (() => Promise.resolve()),
-    onRefresh: vestingData?.refreshData || (() => {}),
-    error: vestingData?.error || null,
+  const claimProps = {
+    claimSchedule: claimData?.claimSchedule || null,
+    isChecking: !!claimData?.isChecking,
+    isClaiming: !!claimData?.isClaiming,
+    onClaim: claimData?.claimTokens || (() => Promise.resolve()),
+    onRefresh: claimData?.refreshData || (() => {}),
+    error: claimData?.error || null,
   };
 
   return (
@@ -27,11 +27,11 @@ export default function Home() {
 
       <div className="w-full max-w-md mx-auto">
         {/* Transaction notification for confirmed claims */}
-        {vestingData?.transactionHash && (
+        {claimData?.transactionHash && (
           <div className="p-4 bg-green-500/10 text-green-400 rounded-md text-sm mb-4 flex justify-between items-center">
             <span>Transaction confirmed!</span>
             <a
-              href={`https://quaiscan.io/tx/${vestingData.transactionHash}`}
+              href={`https://quaiscan.io/tx/${claimData.transactionHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs underline"
@@ -42,7 +42,7 @@ export default function Home() {
         )}
 
         {account?.addr ? (
-          <VestingInfo {...vestingProps} />
+          <ClaimInfo {...claimProps} />
         ) : (
           <div className="flex items-center justify-center h-64">
             <p className="text-[#999999] text-sm font-medium italic">

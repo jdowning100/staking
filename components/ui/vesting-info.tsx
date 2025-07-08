@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { VestingSchedule } from '@/lib/hooks/useVesting';
+import { ClaimSchedule } from '@/lib/hooks/useVesting';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { TOKEN_SYMBOL } from '@/lib/config';
@@ -8,8 +8,8 @@ import { Loader2, ChevronDown, ChevronUp, ExternalLink, Lock } from 'lucide-reac
 import { cn } from '@/lib/utils';
 import { formatQuai } from '@/lib/hooks/useVesting';
 
-interface VestingInfoProps {
-  vestingSchedule: VestingSchedule | null;
+interface ClaimInfoProps {
+  claimSchedule: ClaimSchedule | null;
   isChecking: boolean;
   isClaiming: boolean;
   onClaim: () => Promise<void>;
@@ -17,7 +17,7 @@ interface VestingInfoProps {
   error: string | null;
 }
 
-export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, onRefresh, error }: VestingInfoProps) {
+export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRefresh, error }: ClaimInfoProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -32,8 +32,8 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     }
   };
 
-  // Validate vesting schedule data
-  const isValidVestingSchedule = (schedule: VestingSchedule) => {
+  // Validate claim schedule data
+  const isValidClaimSchedule = (schedule: ClaimSchedule) => {
     return (
       schedule &&
       schedule.contracts &&
@@ -47,9 +47,9 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     return (
       <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl text-white">Loading Vesting Information</CardTitle>
+          <CardTitle className="text-xl text-white">Loading Claim Information</CardTitle>
           <CardDescription className="text-[#999999]">
-            Please wait while we fetch your vesting details...
+            Please wait while we fetch your claim details...
           </CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center items-center py-6">
@@ -59,13 +59,13 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     );
   }
 
-  if (!vestingSchedule || !isValidVestingSchedule(vestingSchedule)) {
+  if (!claimSchedule || !isValidClaimSchedule(claimSchedule)) {
     return (
       <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl text-white">No Vesting Schedule Found</CardTitle>
+          <CardTitle className="text-xl text-white">No Claim Schedule Found</CardTitle>
           <CardDescription className="text-[#999999]">
-            The connected wallet does not have a vesting schedule.
+            The connected wallet does not have a claim schedule.
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center py-6">
@@ -80,18 +80,18 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
     );
   }
 
-  // At this point vestingSchedule is guaranteed to be non-null
+  // At this point claimSchedule is guaranteed to be non-null
   const AVERAGE_BLOCK_TIME = 5; // seconds per block
 
   // Get the earliest start block and cliff from all contracts
-  const earliestStartBlock = Math.min(...vestingSchedule.contracts.map(c => c.startBlock));
-  const earliestCliff = Math.min(...vestingSchedule.contracts.map(c => c.cliffBlock));
-  const minBlocksUntilCliff = Math.min(...vestingSchedule.contracts.map(c => c.blocksUntilCliff));
+  const earliestStartBlock = Math.min(...claimSchedule.contracts.map(c => c.startBlock));
+  const earliestCliff = Math.min(...claimSchedule.contracts.map(c => c.cliffBlock));
+  const minBlocksUntilCliff = Math.min(...claimSchedule.contracts.map(c => c.blocksUntilCliff));
 
   // Calculate time until next unlock (start)
   const blocksUntilNextUnlock =
-    vestingSchedule.currentBlock < earliestStartBlock
-      ? earliestStartBlock - vestingSchedule.currentBlock
+    claimSchedule.currentBlock < earliestStartBlock
+      ? earliestStartBlock - claimSchedule.currentBlock
       : 0;
   const secondsUntilNextUnlock = blocksUntilNextUnlock * AVERAGE_BLOCK_TIME;
   const hoursUntilNextUnlock = Math.floor(secondsUntilNextUnlock / 3600);
@@ -112,47 +112,47 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
   const canClaim =
     !isClaiming &&
     !isSubmitting &&
-    vestingSchedule.aggregated.hasClaimableTokens &&
-    vestingSchedule.userQuaiBalance >= BigInt(1000000000000000);
+    claimSchedule.aggregated.hasClaimableTokens &&
+    claimSchedule.userQuaiBalance >= BigInt(1000000000000000);
 
   return (
     <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
       <CardHeader>
         <CardTitle className="text-xl text-white text-center flex items-center justify-center gap-2">
-          Your Token Vesting
-          {vestingSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && <Lock className="h-5 w-5 text-yellow-400" />}
+          Your Token Claims
+          {claimSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && <Lock className="h-5 w-5 text-yellow-400" />}
         </CardTitle>
         <CardDescription className="text-[#999999] text-center">
-          Track and claim your vested {TOKEN_SYMBOL} tokens
+          Track and claim your unlocked {TOKEN_SYMBOL} tokens
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error && <div className="p-3 bg-red-500/10 text-red-400 rounded-md text-sm mb-4">{error}</div>}
 
         {/* Add warning for insufficient contract balance */}
-        {vestingSchedule.contracts.some(c => c.contractBalance < c.rawClaimableAmount) && (
+        {claimSchedule.contracts.some(c => c.contractBalance < c.rawClaimableAmount) && (
           <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4">
             Warning: One or more contracts do not have enough tokens to fulfill your claim.
           </div>
         )}
 
         {/* Add warning for insufficient QUAI balance */}
-        {vestingSchedule.userQuaiBalance !== undefined &&
-          vestingSchedule.userQuaiBalance < BigInt(1000000000000000) && (
+        {claimSchedule.userQuaiBalance !== undefined &&
+          claimSchedule.userQuaiBalance < BigInt(1000000000000000) && (
             <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4">
               Warning: You need at least 0.001 QUAI to cover transaction fees. Your balance is{' '}
-              {formatQuai(vestingSchedule.userQuaiBalance)} QUAI.
+              {formatQuai(claimSchedule.userQuaiBalance)} QUAI.
             </div>
           )}
 
         {/* Add warning for cliff not reached */}
-        {vestingSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && (
+        {claimSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && (
           <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4 flex items-start gap-2">
             <Lock className="h-4 w-4 mt-0.5 flex-shrink-0" />
             <div>
               <p className="font-medium mb-1">Cliff Period Not Reached</p>
               <p>
-                Your tokens are vesting but you cannot claim them until the cliff period ends in {cliffTimeRemaining} (
+                Your tokens are unlocking but you cannot claim them until the cliff period ends in {cliffTimeRemaining} (
                 {minBlocksUntilCliff.toLocaleString()} blocks).
               </p>
             </div>
@@ -163,20 +163,20 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
           <div className="flex justify-between">
             <span className="text-[#999999]">Total Allocation</span>
             <span className="font-medium text-white">
-              {vestingSchedule.aggregated.totalAmount} {TOKEN_SYMBOL}
+              {claimSchedule.aggregated.totalAmount} {TOKEN_SYMBOL}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-[#999999]">Claimed Amount</span>
             <span className="font-medium text-white">
-              {vestingSchedule.aggregated.releasedAmount} {TOKEN_SYMBOL}
+              {claimSchedule.aggregated.releasedAmount} {TOKEN_SYMBOL}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-[#999999]">Claimable Amount</span>
-            <span className={`font-semibold ${vestingSchedule.aggregated.hasClaimableTokens ? 'text-red-9' : 'text-yellow-400'}`}>
-              {vestingSchedule.aggregated.hasClaimableTokens ? vestingSchedule.aggregated.claimableAmount : '0'} {TOKEN_SYMBOL}
-              {!vestingSchedule.aggregated.hasClaimableTokens && vestingSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && (
+            <span className={`font-semibold ${claimSchedule.aggregated.hasClaimableTokens ? 'text-red-9' : 'text-yellow-400'}`}>
+              {claimSchedule.aggregated.hasClaimableTokens ? claimSchedule.aggregated.claimableAmount : '0'} {TOKEN_SYMBOL}
+              {!claimSchedule.aggregated.hasClaimableTokens && claimSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && (
                 <span className="text-xs ml-1 text-yellow-400 justify-center items-center">
                   <Lock className="h-3 w-3 inline-block" />
                 </span>
@@ -187,10 +187,10 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
 
         <div className="pt-4 space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-white">Vesting Progress</span>
-            <span className="text-white">{vestingSchedule.aggregated.progress.toFixed(2)}%</span>
+            <span className="text-white">Unlock Progress</span>
+            <span className="text-white">{claimSchedule.aggregated.unlockProgress.toFixed(2)}%</span>
           </div>
-          <Progress value={vestingSchedule.aggregated.progress} className="h-2 bg-[#333333]" />
+          <Progress value={claimSchedule.aggregated.unlockProgress} className="h-2 bg-[#333333]" />
         </div>
 
         {/* Details toggle button */}
@@ -220,26 +220,26 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
                 <p className="text-[#999999]">Current Block</p>
                 <p className="font-medium text-white">
                   <a
-                    href={`https://quaiscan.io/block/${vestingSchedule.currentBlock}`}
+                    href={`https://quaiscan.io/block/${claimSchedule.currentBlock}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center hover:text-red-9"
                   >
-                    {vestingSchedule.currentBlock}
+                    {claimSchedule.currentBlock}
                     <ExternalLink className="w-3 h-3 ml-1" />
                   </a>
                 </p>
               </div>
               <div className="space-y-1">
                 <p className="text-[#999999]">Active Contracts</p>
-                <p className="font-medium text-white">{vestingSchedule.contracts.length}</p>
+                <p className="font-medium text-white">{claimSchedule.contracts.length}</p>
               </div>
             </div>
 
             {/* Individual contract details */}
             <div className="space-y-3">
               <p className="text-[#999999] font-medium">Contract Details:</p>
-              {vestingSchedule.contracts.map((contract, index) => (
+              {claimSchedule.contracts.map((contract, index) => (
                 <div key={contract.contractAddress} className="p-3 bg-[#222222] rounded-md">
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-white font-medium">{contract.displayName || `Contract ${index + 1}`}</p>
@@ -268,20 +268,20 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
             <div className="space-y-1">
               <p className="text-[#999999]">Estimated Time Until Complete</p>
               <p className="font-medium text-white">
-                {vestingSchedule.aggregated.progress < 100
-                  ? `~${Math.ceil((((100 - vestingSchedule.aggregated.progress) / 100) * Math.max(...vestingSchedule.contracts.map(c => c.durationInBlocks)) * AVERAGE_BLOCK_TIME) / 86400)} days`
-                  : 'Vesting Complete'}
+                {claimSchedule.aggregated.unlockProgress < 100
+                  ? `~${Math.ceil((((100 - claimSchedule.aggregated.unlockProgress) / 100) * Math.max(...claimSchedule.contracts.map(c => c.durationInBlocks)) * AVERAGE_BLOCK_TIME) / 86400)} days`
+                  : 'Unlock Complete'}
               </p>
             </div>
 
-            {vestingSchedule.currentBlock < earliestStartBlock && (
+            {claimSchedule.currentBlock < earliestStartBlock && (
               <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm">
                 <p>
-                  Vesting hasn&apos;t started yet.{' '}
+                  Token unlock hasn&apos;t started yet.{' '}
                   {daysUntilNextUnlock > 0
                     ? `~${daysUntilNextUnlock} days remaining`
                     : `~${hoursUntilNextUnlock} hours remaining`}{' '}
-                  until the vesting period begins.
+                  until the unlock period begins.
                 </p>
               </div>
             )}
@@ -289,7 +289,7 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
             <div className="p-3 rounded-md text-sm bg-[#222222]">
               <p className="text-white font-medium mb-1">How Multiple Contracts Work</p>
               <p className="text-[#bbbbbb]">
-                You have multiple vesting contracts. Each contract vests independently, but you can claim from all contracts at once when their cliff periods are reached.
+                You have multiple claim contracts. Each contract unlocks independently, but you can claim from all contracts at once when their cliff periods are reached.
               </p>
             </div>
           </div>
@@ -308,7 +308,7 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
             </>
           ) : (
             <>
-              {vestingSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) ? (
+              {claimSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) ? (
                 <>
                   <Lock className="mr-2 h-4 w-4" />
                   Locked Until Cliff

@@ -11,7 +11,7 @@ export const VESTING_CONTRACT_ADDRESSES = [
 export const VESTING_CONTRACT_ADDRESS = VESTING_CONTRACT_ADDRESSES[0];
 
 // UI Constants
-export const APP_TITLE = process.env.NEXT_PUBLIC_APP_TITLE || 'Quai Token Vesting Claims';
+export const APP_TITLE = process.env.NEXT_PUBLIC_APP_TITLE || 'Quai Token Claims';
 export const APP_DESCRIPTION = process.env.NEXT_PUBLIC_APP_DESCRIPTION || 'Check and claim your vested Quai tokens';
 
 // Formatting Constants
