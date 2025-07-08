@@ -120,7 +120,6 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
       <CardHeader>
         <CardTitle className="text-xl text-white text-center flex items-center justify-center gap-2">
           Your Token Claims
-          {claimSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && <Lock className="h-5 w-5 text-yellow-400" />}
         </CardTitle>
         <CardDescription className="text-[#999999] text-center">
           Track and claim your unlocked {TOKEN_SYMBOL} tokens
@@ -144,20 +143,6 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
               {formatQuai(claimSchedule.userQuaiBalance)} QUAI.
             </div>
           )}
-
-        {/* Add warning for cliff not reached */}
-        {claimSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) && (
-          <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-md text-sm mb-4 flex items-start gap-2">
-            <Lock className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium mb-1">Cliff Period Not Reached</p>
-              <p>
-                Your tokens are unlocking but you cannot claim them until the cliff period ends in {cliffTimeRemaining} (
-                {minBlocksUntilCliff.toLocaleString()} blocks).
-              </p>
-            </div>
-          </div>
-        )}
 
         <div className="space-y-2">
           <div className="flex justify-between">
@@ -248,6 +233,7 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <p className="text-[#999999]">Total: {contract.totalAmount} {TOKEN_SYMBOL}</p>
+                      <p className="text-[#999999]">Already Claimed: {contract.releasedAmount} {TOKEN_SYMBOL}</p>
                       <p className="text-[#999999]">Claimable: {contract.claimableAmount} {TOKEN_SYMBOL}</p>
                     </div>
                     <div>
@@ -308,7 +294,7 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
             </>
           ) : (
             <>
-              {claimSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) ? (
+              {!claimSchedule.aggregated.hasClaimableTokens && claimSchedule.contracts.some(contract => contract.blocksUntilCliff > 0) ? (
                 <>
                   <Lock className="mr-2 h-4 w-4" />
                   Locked Until Cliff
