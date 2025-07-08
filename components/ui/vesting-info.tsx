@@ -19,6 +19,7 @@ interface ClaimInfoProps {
 
 export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRefresh, error }: ClaimInfoProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Prevent double submission
@@ -82,6 +83,21 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
 
   // At this point claimSchedule is guaranteed to be non-null
   const AVERAGE_BLOCK_TIME = 5; // seconds per block
+
+  // Categorize contracts into active and completed
+  const activeContracts = claimSchedule.contracts.filter(contract => {
+    // Active if: has claimable tokens OR unlock progress < 100% OR still in cliff period
+    return contract.rawClaimableAmount > BigInt(0) || 
+           contract.unlockProgress < 100 || 
+           contract.blocksUntilCliff > 0;
+  });
+
+  const completedContracts = claimSchedule.contracts.filter(contract => {
+    // Completed if: unlock progress = 100% AND no claimable tokens AND cliff passed
+    return contract.unlockProgress >= 100 && 
+           contract.rawClaimableAmount === BigInt(0) && 
+           contract.blocksUntilCliff === 0;
+  });
 
   // Get the earliest start block and cliff from all contracts
   const earliestStartBlock = Math.min(...claimSchedule.contracts.map(c => c.startBlock));
@@ -217,39 +233,92 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
               </div>
               <div className="space-y-1">
                 <p className="text-[#999999]">Active Contracts</p>
-                <p className="font-medium text-white">{claimSchedule.contracts.length}</p>
+                <p className="font-medium text-white">{activeContracts.length}</p>
               </div>
             </div>
 
-            {/* Individual contract details */}
-            <div className="space-y-3">
-              <p className="text-[#999999] font-medium">Contract Details:</p>
-              {claimSchedule.contracts.map((contract, index) => (
-                <div key={contract.contractAddress} className="p-3 bg-[#222222] rounded-md">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-white font-medium">{contract.displayName || `Contract ${index + 1}`}</p>
-                    <p className="text-xs text-[#999999] font-mono">{contract.contractAddress.split('-')[0].slice(0, 10)}...</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <p className="text-[#999999]">Total: {contract.totalAmount} {TOKEN_SYMBOL}</p>
-                      <p className="text-[#999999]">Already Claimed: {contract.releasedAmount} {TOKEN_SYMBOL}</p>
-                      <p className="text-[#999999]">Claimable: {contract.claimableAmount} {TOKEN_SYMBOL}</p>
+            {/* Active contract details */}
+            {activeContracts.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-[#999999] font-medium">Active Unlocks:</p>
+                {activeContracts.map((contract, index) => (
+                  <div key={contract.contractAddress} className="p-3 bg-[#222222] rounded-md">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-white font-medium">{contract.displayName || `Contract ${index + 1}`}</p>
+                      <p className="text-xs text-[#999999] font-mono">{contract.contractAddress.split('-')[0].slice(0, 10)}...</p>
                     </div>
-                    <div>
-                      <p className="text-[#999999]">Start: {contract.startBlock}</p>
-                      <p className="text-[#999999]">Cliff: {contract.cliffBlock}</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-[#999999]">Total: {contract.totalAmount} {TOKEN_SYMBOL}</p>
+                        <p className="text-[#999999]">Already Claimed: {contract.releasedAmount} {TOKEN_SYMBOL}</p>
+                        <p className="text-[#999999]">Claimable: {contract.claimableAmount} {TOKEN_SYMBOL}</p>
+                      </div>
+                      <div>
+                        <p className="text-[#999999]">Start: {contract.startBlock}</p>
+                        <p className="text-[#999999]">Cliff: {contract.cliffBlock}</p>
+                        <p className="text-[#999999]">Progress: {contract.unlockProgress.toFixed(1)}%</p>
+                      </div>
                     </div>
+                    {contract.blocksUntilCliff > 0 && (
+                      <p className="text-yellow-400 text-xs mt-1">
+                        <Lock className="h-3 w-3 inline-block mr-1" />
+                        {contract.blocksUntilCliff} blocks until cliff
+                      </p>
+                    )}
                   </div>
-                  {contract.blocksUntilCliff > 0 && (
-                    <p className="text-yellow-400 text-xs mt-1">
-                      <Lock className="h-3 w-3 inline-block mr-1" />
-                      {contract.blocksUntilCliff} blocks until cliff
-                    </p>
+                ))}
+              </div>
+            )}
+
+            {/* History button and completed contracts */}
+            {completedContracts.length > 0 && (
+              <div className="space-y-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="w-full border-[#333333] text-[#999999] hover:bg-[#222222] flex items-center justify-center"
+                >
+                  {showHistory ? (
+                    <>
+                      <ChevronUp className="w-4 h-4 mr-2" />
+                      Hide History ({completedContracts.length} completed)
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-4 h-4 mr-2" />
+                      Show History ({completedContracts.length} completed)
+                    </>
                   )}
-                </div>
-              ))}
-            </div>
+                </Button>
+
+                {showHistory && (
+                  <div className="space-y-3">
+                    <p className="text-[#999999] font-medium">Completed Unlocks:</p>
+                    {completedContracts.map((contract, index) => (
+                      <div key={contract.contractAddress} className="p-3 bg-[#1a1a1a] border border-[#333333] rounded-md opacity-75">
+                        <div className="flex justify-between items-center mb-2">
+                          <p className="text-white font-medium">{contract.displayName || `Contract ${index + 1}`}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-green-400 font-medium">✓ Complete</span>
+                            <p className="text-xs text-[#999999] font-mono">{contract.contractAddress.split('-')[0].slice(0, 10)}...</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <p className="text-[#999999]">Total: {contract.totalAmount} {TOKEN_SYMBOL}</p>
+                            <p className="text-[#999999]">Claimed: {contract.releasedAmount} {TOKEN_SYMBOL}</p>
+                          </div>
+                          <div>
+                            <p className="text-[#999999]">Start: {contract.startBlock}</p>
+                            <p className="text-[#999999]">Completed: {contract.startBlock + contract.durationInBlocks}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-1">
               <p className="text-[#999999]">Estimated Time Until Complete</p>
