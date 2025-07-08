@@ -242,8 +242,8 @@ export function VestingInfo({ vestingSchedule, isChecking, isClaiming, onClaim, 
               {vestingSchedule.contracts.map((contract, index) => (
                 <div key={contract.contractAddress} className="p-3 bg-[#222222] rounded-md">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-white font-medium">Contract {index + 1}</p>
-                    <p className="text-xs text-[#999999] font-mono">{contract.contractAddress.slice(0, 10)}...</p>
+                    <p className="text-white font-medium">{contract.displayName || `Contract ${index + 1}`}</p>
+                    <p className="text-xs text-[#999999] font-mono">{contract.contractAddress.split('-')[0].slice(0, 10)}...</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>

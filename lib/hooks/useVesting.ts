@@ -8,6 +8,24 @@ import { RPC_URL, VESTING_CONTRACT_ADDRESSES } from '@/lib/config';
 // Re-export formatQuai for use in other components
 export const formatQuai = formatQuaiOriginal;
 
+// Helper function to get blocks per period (based on 5-second block times)
+function getBlocksPerPeriod(period: number): number {
+  const blocksPerPeriod = [1, 12, 720, 17280, 120960, 518400, 6307200]; // BLOCK, MINUTE, HOUR, DAY, WEEK, MONTH, YEAR
+  return blocksPerPeriod[period] || 1;
+}
+
+// Helper function to generate display names based on vesting period
+function generateDisplayName(cliffDuration: number, duration: number, vestingPeriod: number): string {
+  const periodNames = ['Block', 'Minute', 'Hour', 'Day', 'Week', 'Month', 'Year'];
+  const periodName = periodNames[vestingPeriod] || 'Block';
+  
+  if (cliffDuration > 0) {
+    return `${cliffDuration} ${periodName} Cliff, ${duration} ${periodName} Unlock`;
+  } else {
+    return `${duration} ${periodName} Linear Unlock`;
+  }
+}
+
 export interface VestingScheduleItem {
   contractAddress: string;
   totalAmount: string;
@@ -22,6 +40,10 @@ export interface VestingScheduleItem {
   progress: number;
   contractBalance: bigint;
   blocksUntilCliff: number;
+  vestingPeriod?: number;
+  cliffDuration?: number;
+  duration?: number;
+  displayName?: string;
 }
 
 export interface VestingSchedule {
@@ -139,6 +161,9 @@ export function useVesting() {
                 );
               }
               
+              // For the original contract, create a simple display name
+              const displayName = "Legacy Vesting Contract";
+              
               // Add to contract data
               contractData.push({
                 contractAddress: `${contractAddress}-0`, // Add schedule index for consistency
@@ -154,6 +179,10 @@ export function useVesting() {
                 progress,
                 contractBalance,
                 blocksUntilCliff,
+                vestingPeriod: 0, // BLOCK period for legacy contract
+                cliffDuration: Math.floor((cliffBlock - startBlock) / 1), // Cliff duration in blocks
+                duration: durationInBlocks, // Duration in blocks
+                displayName,
               });
               
               // Aggregate amounts
@@ -169,29 +198,58 @@ export function useVesting() {
           } else {
             // Second contract (MultiBeneficiaryVesting interface) - multiple schedules per beneficiary
             try {
-              // Get the total claimable amount first to check if user has any schedules
-              const totalClaimable = await vestingContract.getTotalClaimableAmount(account.addr);
-              if (totalClaimable === BigInt(0)) continue;
+              console.log(`Loading data for MultiBeneficiaryVesting contract: ${contractAddress}`);
+              
+              // Check if user has any schedules (don't skip based on claimable amount)
+              // Users should see their vesting info even if nothing is claimable yet
               
               // Get schedule count for this beneficiary
               const scheduleCount = await vestingContract.getScheduleCount(account.addr);
+              console.log(`Schedule count for ${account.addr}: ${scheduleCount}`);
+              
+              // Skip only if user has no schedules at all
+              if (scheduleCount === 0) {
+                console.log(`No schedules found for ${account.addr} in contract ${contractAddress}`);
+                continue;
+              }
               
               // Iterate through all schedules for this beneficiary
               for (let scheduleIndex = 0; scheduleIndex < scheduleCount; scheduleIndex++) {
                 try {
-                  const beneficiaryData = await vestingContract.beneficiaries(account.addr, scheduleIndex);
-                  const rawTotalAmount = beneficiaryData.totalAmount;
+                  console.log(`Processing schedule ${scheduleIndex} for ${account.addr}`);
+                  // Get full schedule details including vesting period information
+                  const scheduleData = await vestingContract.getSchedule(account.addr, scheduleIndex);
+                  console.log(`Schedule ${scheduleIndex} data:`, scheduleData);
+                  const rawTotalAmount = scheduleData.totalAmount;
                   
-                  // Skip if no vesting schedule exists for this schedule
-                  if (rawTotalAmount === BigInt(0)) continue;
+                  // Skip only if schedule is inactive or has no allocation
+                  if (rawTotalAmount === BigInt(0) || !scheduleData.isActive) {
+                    console.log(`Skipping schedule ${scheduleIndex}: totalAmount=${rawTotalAmount}, isActive=${scheduleData.isActive}`);
+                    continue;
+                  }
                   
-                  const rawReleasedAmount = beneficiaryData.releasedAmount;
-                  const startBlock = Number(beneficiaryData.startBlock);
-                  const durationInBlocks = Number(beneficiaryData.duration);
-                  const cliffBlock = Number(beneficiaryData.cliffBlock);
+                  const rawReleasedAmount = scheduleData.releasedAmount;
+                  const startBlock = Number(scheduleData.startBlock);
+                  const duration = Number(scheduleData.duration);
+                  const cliffDuration = Number(scheduleData.cliffDuration);
+                  const vestingPeriod = Number(scheduleData.vestingPeriod);
                   
-                  // Get claimable amount for this specific schedule
-                  const rawClaimableAmount = await vestingContract.getClaimableAmount(account.addr, scheduleIndex);
+                  // Calculate actual block numbers and durations
+                  const cliffBlock = startBlock + (cliffDuration * getBlocksPerPeriod(vestingPeriod));
+                  const durationInBlocks = duration * getBlocksPerPeriod(vestingPeriod);
+                  
+                  // Generate display name
+                  const displayName = generateDisplayName(cliffDuration, duration, vestingPeriod);
+                  
+                  // Get claimable amount for this specific schedule (might be 0 if in cliff period)
+                  let rawClaimableAmount = BigInt(0);
+                  try {
+                    rawClaimableAmount = await vestingContract.getClaimableAmount(account.addr, scheduleIndex);
+                  } catch (claimableError) {
+                    console.warn(`Failed to get claimable amount for schedule ${scheduleIndex}:`, claimableError);
+                    // Continue with 0 claimable amount to still show the schedule
+                  }
+                  console.log(`Schedule ${scheduleIndex} claimable amount: ${rawClaimableAmount}`);
                   
                   // Calculate blocks until cliff
                   const blocksUntilCliff = cliffBlock > blockNumber ? cliffBlock - blockNumber : 0;
@@ -235,6 +293,10 @@ export function useVesting() {
                     progress,
                     contractBalance,
                     blocksUntilCliff,
+                    vestingPeriod,
+                    cliffDuration,
+                    duration,
+                    displayName,
                   });
                   
                   // Aggregate amounts
@@ -358,12 +420,34 @@ export function useVesting() {
 
         // Release tokens from the contract
         console.log(`Releasing tokens from contract ${actualContractAddress}, total amount: ${currentClaimableAmount}`);
+        console.log(`Contract items:`, contractItems.map((item: any) => ({
+          address: item.contractAddress,
+          claimable: item.rawClaimableAmount.toString(),
+          cliffBlock: item.cliffBlock,
+          currentBlock: vestingSchedule.currentBlock,
+          blocksUntilCliff: item.blocksUntilCliff
+        })));
+        
+        // Add additional validation before transaction
+        if (currentClaimableAmount === BigInt(0)) {
+          throw new Error(`No tokens available to claim from contract ${actualContractAddress}`);
+        }
+        
         let tx;
-        if (contractIndex === 0) {
-          tx = await vestingContract.release();
-        } else {
-          // For MultiBeneficiaryVesting, use releaseAll to release all claimable tokens efficiently
-          tx = await vestingContract.releaseAll();
+        try {
+          if (contractIndex === 0) {
+            tx = await vestingContract.release();
+          } else {
+            // For MultiBeneficiaryVesting, use releaseAll to release all claimable tokens efficiently
+            console.log(`Calling releaseAll() on contract ${actualContractAddress}`);
+            tx = await vestingContract.releaseAll();
+          }
+        } catch (txError: any) {
+          console.error(`Transaction failed for contract ${actualContractAddress}:`, txError);
+          if (txError.code === 'CALL_EXCEPTION') {
+            throw new Error(`Contract call failed for ${actualContractAddress}. This may indicate that no tokens are claimable yet or the cliff period hasn't been reached.`);
+          }
+          throw new Error(`Failed to execute transaction on contract ${actualContractAddress}: ${txError.message}`);
         }
 
         transactionHashes.push(tx.hash);
