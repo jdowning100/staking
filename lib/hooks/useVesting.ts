@@ -1,8 +1,8 @@
 import { Contract, JsonRpcProvider, Shard, formatQuai as formatQuaiOriginal } from 'quais';
 import { useContext, useState, useEffect, useCallback } from 'react';
 import { StateContext } from '@/store';
-import VestingContract from '@/lib/Vesting.json';
 import MultiBeneficiaryVestingContract from '@/lib/MultiBeneficiaryVesting.json';
+import MultiBeneficiaryVestingContract2 from '@/lib/MultiBeneficiaryVesting-2.json';
 import { RPC_URL, VESTING_CONTRACT_ADDRESSES } from '@/lib/config';
 
 // Re-export formatQuai for use in other components
@@ -99,7 +99,7 @@ export function useClaims() {
         const contractAddress = VESTING_CONTRACT_ADDRESSES[i];
         try {
           // Use Vesting.json for first contract, MultiBeneficiaryVesting.json for second contract
-          const contractAbi = i === 0 ? VestingContract.abi : MultiBeneficiaryVestingContract.abi;
+          const contractAbi = i === 0 ? MultiBeneficiaryVestingContract.abi : MultiBeneficiaryVestingContract2.abi;
           const vestingContract = new Contract(contractAddress, contractAbi, provider);
 
           if (i === 0) {
@@ -111,24 +111,27 @@ export function useClaims() {
               } catch (decodeError: any) {
                 // If we get a BAD_DATA error, it means the beneficiary doesn't exist in this contract
                 if (decodeError.code === 'BAD_DATA') {
-                  console.log(`No beneficiary data found for ${account.addr} in contract ${contractAddress}`);
-                  continue;
+                    continue;
                 }
                 throw decodeError;
               }
 
               // Skip if beneficiary data is invalid or empty
-              if (!beneficiaryData || !beneficiaryData.totalAmount) continue;
+              if (!beneficiaryData || !beneficiaryData.totalAmount) {
+                continue;
+              }
 
               const rawTotalAmount = beneficiaryData.totalAmount;
 
               // Skip if no vesting schedule exists for this contract
-              if (rawTotalAmount === BigInt(0)) continue;
+              if (rawTotalAmount === BigInt(0)) {
+                  continue;
+              }
 
               const rawReleasedAmount = beneficiaryData.releasedAmount;
               const startBlock = Number(beneficiaryData.startBlock);
               const durationInBlocks = Number(beneficiaryData.durationInBlocks);
-              const cliffBlock = Number(beneficiaryData.cliffBlock);
+              const cliffBlock = startBlock; // No cliff for first contract - cliff same as start
 
               // Get claimable amount
               const rawClaimableAmount = await vestingContract.getClaimableAmount(account.addr);
@@ -161,7 +164,7 @@ export function useClaims() {
               }
 
               // For the original contract, create a simple display name
-              const displayName = "Legacy Vesting Contract";
+              const displayName = "Linear Vesting Contract";
 
               // Add to contract data
               contractData.push({
@@ -179,7 +182,7 @@ export function useClaims() {
                 contractBalance,
                 blocksUntilCliff,
                 vestingPeriod: 0, // BLOCK period for legacy contract
-                cliffDuration: Math.floor((cliffBlock - startBlock) / 1), // Cliff duration in blocks
+                cliffDuration: 0, // No cliff for linear vesting contract
                 duration: durationInBlocks, // Duration in blocks
                 displayName,
               });
@@ -197,33 +200,27 @@ export function useClaims() {
           } else {
             // Second contract (MultiBeneficiaryVesting interface) - multiple schedules per beneficiary
             try {
-              console.log(`Loading data for MultiBeneficiaryVesting contract: ${contractAddress}`);
 
               // Check if user has any schedules (don't skip based on claimable amount)
               // Users should see their vesting info even if nothing is claimable yet
 
               // Get schedule count for this beneficiary
               const scheduleCount = await vestingContract.getScheduleCount(account.addr);
-              console.log(`Schedule count for ${account.addr}: ${scheduleCount}`);
 
               // Skip only if user has no schedules at all
               if (scheduleCount === 0) {
-                console.log(`No schedules found for ${account.addr} in contract ${contractAddress}`);
                 continue;
               }
 
               // Iterate through all schedules for this beneficiary
               for (let scheduleIndex = 0; scheduleIndex < scheduleCount; scheduleIndex++) {
                 try {
-                  console.log(`Processing schedule ${scheduleIndex} for ${account.addr}`);
                   // Get full schedule details including vesting period information
                   const scheduleData = await vestingContract.getSchedule(account.addr, scheduleIndex);
-                  console.log(`Schedule ${scheduleIndex} data:`, scheduleData);
                   const rawTotalAmount = scheduleData.totalAmount;
 
                   // Skip only if schedule is inactive or has no allocation
                   if (rawTotalAmount === BigInt(0) || !scheduleData.isActive) {
-                    console.log(`Skipping schedule ${scheduleIndex}: totalAmount=${rawTotalAmount}, isActive=${scheduleData.isActive}`);
                     continue;
                   }
 
@@ -248,7 +245,6 @@ export function useClaims() {
                     console.warn(`Failed to get claimable amount for schedule ${scheduleIndex}:`, claimableError);
                     // Continue with 0 claimable amount to still show the schedule
                   }
-                  console.log(`Schedule ${scheduleIndex} claimable amount: ${rawClaimableAmount}`);
 
                   // Calculate blocks until cliff
                   const blocksUntilCliff = cliffBlock > blockNumber ? cliffBlock - blockNumber : 0;
@@ -384,7 +380,7 @@ export function useClaims() {
         if (contractIndex === -1) continue;
 
         // Use Vesting.json for first contract, MultiBeneficiaryVesting.json for second contract
-        const contractAbi = contractIndex === 0 ? VestingContract.abi : MultiBeneficiaryVestingContract.abi;
+        const contractAbi = contractIndex === 0 ? MultiBeneficiaryVestingContract.abi : MultiBeneficiaryVestingContract2.abi;
         const vestingContract = new Contract(actualContractAddress, contractAbi, signer);
 
         // Calculate total claimable amount for this contract
