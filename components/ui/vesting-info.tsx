@@ -22,6 +22,25 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
   const [showHistory, setShowHistory] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Helper function to format estimated time from block numbers
+  const formatEstimatedTime = (targetBlock: number, currentBlock: number) => {
+    const blockDiff = Math.abs(targetBlock - currentBlock);
+    const seconds = blockDiff * 5; // 5 seconds per block
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) {
+      return `~${days}d ${hours % 24}h`;
+    } else if (hours > 0) {
+      return `~${hours}h ${minutes % 60}m`;
+    } else if (minutes > 0) {
+      return `~${minutes}m`;
+    } else {
+      return `~${seconds}s`;
+    }
+  };
+
   // Prevent double submission
   const handleClaim = async () => {
     if (isSubmitting) return;
@@ -254,8 +273,24 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
                         <p className="text-[#999999]">Claimable: {contract.claimableAmount} {TOKEN_SYMBOL}</p>
                       </div>
                       <div>
-                        <p className="text-[#999999]">Start: {contract.startBlock}</p>
-                        <p className="text-[#999999]">Cliff: {contract.cliffBlock}</p>
+                        <p className="text-[#999999]">
+                          Start Block: {contract.startBlock}
+                          <span className="text-xs text-[#777777] ml-1">
+                            ({claimSchedule.currentBlock >= contract.startBlock ? 
+                              'started' : 
+                              formatEstimatedTime(contract.startBlock, claimSchedule.currentBlock)
+                            })
+                          </span>
+                        </p>
+                        <p className="text-[#999999]">
+                          Cliff Block: {contract.cliffBlock}
+                          <span className="text-xs text-[#777777] ml-1">
+                            ({claimSchedule.currentBlock >= contract.cliffBlock ? 
+                              'passed' : 
+                              formatEstimatedTime(contract.cliffBlock, claimSchedule.currentBlock)
+                            })
+                          </span>
+                        </p>
                         <p className="text-[#999999]">Progress: {contract.unlockProgress.toFixed(1)}%</p>
                       </div>
                     </div>
@@ -309,8 +344,14 @@ export function ClaimInfo({ claimSchedule, isChecking, isClaiming, onClaim, onRe
                             <p className="text-[#999999]">Claimed: {contract.releasedAmount} {TOKEN_SYMBOL}</p>
                           </div>
                           <div>
-                            <p className="text-[#999999]">Start: {contract.startBlock}</p>
-                            <p className="text-[#999999]">Completed: {contract.startBlock + contract.durationInBlocks}</p>
+                            <p className="text-[#999999]">
+                              Start Block: {contract.startBlock}
+                              <span className="text-xs text-[#777777] ml-1">(started)</span>
+                            </p>
+                            <p className="text-[#999999]">
+                              Cliff Block: {contract.cliffBlock}
+                              <span className="text-xs text-[#777777] ml-1">(passed)</span>
+                            </p>
                           </div>
                         </div>
                       </div>
