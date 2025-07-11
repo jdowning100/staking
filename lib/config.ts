@@ -3,8 +3,8 @@ export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://orchard.rpc.q
 
 // Vesting Contract Constants
 export const VESTING_CONTRACT_ADDRESSES = [
-  process.env.NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS || '0x0054D2Ac335D3baA0F735d0819b11da3e71C73a9',
-  process.env.NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS_2 || '0x006b15D1B80748173007Ee44aEa660ed54E62527',
+  process.env.NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS || '0x0045edcE84e8E85e1E4861f082e5F5A0a50A7317',
+  process.env.NEXT_PUBLIC_VESTING_CONTRACT_ADDRESS_2 || '0x000a579b9769998f350E4B1C1C8bf23921a1d8De',
 ].filter(address => address !== '0x0000000000000000000000000000000000000000');
 
 // Legacy single contract address for backward compatibility
