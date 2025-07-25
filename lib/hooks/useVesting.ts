@@ -102,6 +102,7 @@ export function useClaims() {
           const contractAbi = i === 0 ? MultiBeneficiaryVestingContract.abi : MultiBeneficiaryVestingContract2.abi;
           const vestingContract = new Contract(contractAddress, contractAbi, provider);
 
+
           if (i === 0) {
             // First contract (original interface) - single schedule per beneficiary
             try {
@@ -111,7 +112,7 @@ export function useClaims() {
               } catch (decodeError: any) {
                 // If we get a BAD_DATA error, it means the beneficiary doesn't exist in this contract
                 if (decodeError.code === 'BAD_DATA') {
-                    continue;
+                  continue;
                 }
                 throw decodeError;
               }
@@ -125,13 +126,14 @@ export function useClaims() {
 
               // Skip if no vesting schedule exists for this contract
               if (rawTotalAmount === BigInt(0)) {
-                  continue;
+                continue;
               }
+
 
               const rawReleasedAmount = beneficiaryData.releasedAmount;
               const startBlock = Number(beneficiaryData.startBlock);
               const durationInBlocks = Number(beneficiaryData.durationInBlocks);
-              const cliffBlock = startBlock; // No cliff for first contract - cliff same as start
+              const cliffBlock = Number(beneficiaryData.cliffBlock);
 
               // Get claimable amount
               const rawClaimableAmount = await vestingContract.getClaimableAmount(account.addr);
@@ -164,7 +166,7 @@ export function useClaims() {
               }
 
               // For the original contract, create a simple display name
-              const displayName = "Linear Vesting Contract";
+              const displayName = "Unlock Contract";
 
               // Add to contract data
               contractData.push({

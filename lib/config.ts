@@ -1,5 +1,5 @@
 // Network and Provider Constants
-export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://orchard.rpc.quai.network';
+export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.quai.network';
 
 // Vesting Contract Constants
 export const VESTING_CONTRACT_ADDRESSES = [
