@@ -1,23 +1,25 @@
 'use client';
 import React, { useContext } from 'react';
-import { ClaimInfo } from '@/components/ui';
+import { StakingInfo } from '@/components/ui/staking-info';
 import { StateContext } from '@/store';
 import { APP_TITLE } from '@/lib/config';
-import { useClaims } from '@/lib/hooks/useVesting';
+import { useStaking } from '@/lib/hooks/useStaking';
 
 export default function Home() {
   const { account } = useContext(StateContext);
-  const claimData = useClaims();
-
-  // Use optional chaining to safely access properties
-  const claimProps = {
-    claimSchedule: claimData?.claimSchedule || null,
-    isChecking: !!claimData?.isChecking,
-    isClaiming: !!claimData?.isClaiming,
-    onClaim: claimData?.claimTokens || (() => Promise.resolve()),
-    onRefresh: claimData?.refreshData || (() => {}),
-    error: claimData?.error || null,
-  };
+  const {
+    userInfo,
+    contractInfo,
+    isLoading,
+    isTransacting,
+    error,
+    transactionHash,
+    deposit,
+    withdraw,
+    claimRewards,
+    emergencyWithdraw,
+    refreshData,
+  } = useStaking();
 
   return (
     <main className="flex min-h-screen flex-col items-center pt-28 pb-8 px-4 bg-background">
@@ -26,25 +28,22 @@ export default function Home() {
       </div>
 
       <div className="w-full max-w-md mx-auto">
-        {/* Transaction notification for confirmed claims */}
-        {claimData?.transactionHash && (
-          <div className="p-4 bg-green-500/10 text-green-400 rounded-md text-sm mb-4 flex justify-between items-center">
-            <span>Transaction confirmed!</span>
-            <a
-              href={`https://quaiscan.io/tx/${claimData.transactionHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs underline"
-            >
-              View on Explorer
-            </a>
-          </div>
-        )}
-
         {account?.addr ? (
-          <ClaimInfo {...claimProps} />
+          <StakingInfo
+            userInfo={userInfo}
+            contractInfo={contractInfo}
+            isLoading={isLoading}
+            isTransacting={isTransacting}
+            error={error}
+            transactionHash={transactionHash}
+            onDeposit={deposit}
+            onWithdraw={withdraw}
+            onClaimRewards={claimRewards}
+            onEmergencyWithdraw={emergencyWithdraw}
+            onRefresh={refreshData}
+          />
         ) : (
-          <div className="flex items-center justify-center h-64">
+          <div className="flex items-center justify-center h-64 bg-[#1a1a1a] border border-[#333333] rounded-xl">
             <p className="text-[#999999] text-sm font-medium italic">
               Connect your wallet using the button in the header
             </p>

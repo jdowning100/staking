@@ -12,7 +12,8 @@ A simple web application that allows users to connect their Pelagus wallet and c
 
 ## Prerequisites
 
-- Node.js (v20.x)
+- Node.js (v20.x or later)
+- Yarn package manager (v1.22+)
 - Pelagus wallet extension installed in your browser
 - Git
 
@@ -28,7 +29,7 @@ cd token-vesting-claim-site
 2. Install dependencies:
 
 ```bash
-npm install
+yarn install
 ```
 
 3. Set up environment variables:
@@ -60,7 +61,7 @@ npm install
 4. Start the development server:
 
 ```bash
-npm run dev
+yarn dev
 ```
 
 5. Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -75,8 +76,8 @@ npm run dev
 
 2. Deploy the application:
    ```bash
-   npm run build
-   npm start
+   yarn build
+   yarn start
    ```
 
 ## Environment Variables

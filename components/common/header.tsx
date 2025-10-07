@@ -61,7 +61,7 @@ export default function Header() {
         </div>
       </div>
 
-      <MarqueeTextLine text="/ quai network token claims / check and claim your unlocked tokens /" />
+      <MarqueeTextLine text="/ quai network token staking / stake your quai and claim your rewards /" />
     </div>
   );
 }
