@@ -127,7 +127,7 @@ const SOAPDistributionModel = () => {
         totalApr = apr;
       } else {
         tvlUsd = pool.tvl;
-        const tradingApr = pool.tradingFeeApr || 0;
+        const tradingApr = (pool as any).tradingFeeApr || 0;
         apr = (annualRewardsUsd / tvlUsd) * 100;
         totalApr = apr + tradingApr;
       }
@@ -140,7 +140,7 @@ const SOAPDistributionModel = () => {
         annualRewards,
         annualRewardsUsd,
         rewardsApr: apr,
-        tradingApr: pool.tradingFeeApr || 0,
+        tradingApr: (pool as any).tradingFeeApr || 0,
         totalApr,
         allocation: pool.allocation,
         color: pool.color,
@@ -167,16 +167,16 @@ const SOAPDistributionModel = () => {
     };
   }, [inputs, pools]);
 
-  const updatePoolTvl = (key, value) => {
-    setPools(prev => ({
+  const updatePoolTvl = (key: string, value: string | number) => {
+    setPools((prev: any) => ({
       ...prev,
       [key]: { ...prev[key], tvl: Number(value) || 0 }
     }));
   };
 
-  const updatePoolAllocation = (key, value) => {
+  const updatePoolAllocation = (key: string, value: string | number) => {
     const numValue = Number(value) || 0;
-    setPools(prev => ({
+    setPools((prev: any) => ({
       ...prev,
       [key]: { ...prev[key], allocation: numValue }
     }));
@@ -319,7 +319,7 @@ const SOAPDistributionModel = () => {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
+                    label={({ name, value }) => `${name}: ${(value as number).toFixed(1)}%`}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
@@ -363,7 +363,7 @@ const SOAPDistributionModel = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-2xl font-bold text-orange-400">{poolData.totalApr.toFixed(1)}%</div>
+                      <div className="text-2xl font-bold text-orange-400">{poolData?.totalApr.toFixed(1)}%</div>
                       <div className="text-xs text-[#666666]">Total APR</div>
                     </div>
                   </div>
@@ -401,7 +401,7 @@ const SOAPDistributionModel = () => {
                         Daily Rewards
                       </label>
                       <div className="px-3 py-2 bg-[#222222] rounded-md text-white font-medium">
-                        {poolData.dailyRewards.toLocaleString()} QUAI
+                        {poolData?.dailyRewards.toLocaleString()} QUAI
                       </div>
                     </div>
                   </div>
@@ -409,21 +409,21 @@ const SOAPDistributionModel = () => {
                   <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div className="bg-red-900/20 p-2 rounded border border-red-900/50">
                       <div className="text-xs text-red-400">Rewards APR</div>
-                      <div className="font-semibold text-red-300">{poolData.rewardsApr.toFixed(1)}%</div>
+                      <div className="font-semibold text-red-300">{poolData?.rewardsApr.toFixed(1)}%</div>
                     </div>
                     {key !== 'lockedQuai' && (
                       <div className="bg-orange-900/20 p-2 rounded border border-orange-900/50">
                         <div className="text-xs text-orange-400">Trading Fees APR</div>
-                        <div className="font-semibold text-orange-300">{poolData.tradingApr.toFixed(1)}%</div>
+                        <div className="font-semibold text-orange-300">{poolData?.tradingApr.toFixed(1)}%</div>
                       </div>
                     )}
                     <div className="bg-orange-800/20 p-2 rounded border border-orange-800/50">
                       <div className="text-xs text-orange-300">Annual Rewards</div>
-                      <div className="font-semibold text-orange-200">{(poolData.annualRewards / 1000).toFixed(1)}K</div>
+                      <div className="font-semibold text-orange-200">{((poolData?.annualRewards || 0) / 1000).toFixed(1)}K</div>
                     </div>
                     <div className="bg-amber-900/20 p-2 rounded border border-amber-900/50">
                       <div className="text-xs text-amber-400">Value</div>
-                      <div className="font-semibold text-amber-300">${(poolData.annualRewardsUsd / 1000).toFixed(1)}K</div>
+                      <div className="font-semibold text-amber-300">${((poolData?.annualRewardsUsd || 0) / 1000).toFixed(1)}K</div>
                     </div>
                   </div>
                 </div>

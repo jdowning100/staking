@@ -466,7 +466,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
   // Native QUAI uses the contract's lock mechanism, other pools use selectable periods
   const isNativeQuai = pool.id === 'native-quai';
   const isWQIQuaiLP = pool.id === 'wqi-quai';
-  const hasRealLPData = isWQIQuaiLP && lpStakingData && LP_POOLS[pool.id]?.isActive;
+  const hasRealLPData = isWQIQuaiLP && lpStakingData && (LP_POOLS as any)[pool.id]?.isActive;
   
   // Use real data for native QUAI and WQI/QUAI LP, mock for others
   let userStake;

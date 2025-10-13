@@ -60,7 +60,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
   useEffect(() => {
     if (poolInfo) {
       // If in manage mode and user has staked tokens, go directly to management (step 3)
-      if (initialMode === 'manage' && poolInfo.stakingInfo?.stakedAmount > BigInt(0)) {
+      if (initialMode === 'manage' && (poolInfo.stakingInfo?.stakedAmount || BigInt(0)) > BigInt(0)) {
         setCurrentStep(3);
         return;
       }
@@ -107,7 +107,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
         poolInfo.tokens[0],
         poolInfo.tokens[1],
         value,
-        poolInfo.lpToken.address
+        poolInfo.lpToken?.address || ''
       );
       
       if (optimal) {
@@ -135,7 +135,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
         poolInfo.tokens[1],
         poolInfo.tokens[0],
         value,
-        poolInfo.lpToken.address
+        poolInfo.lpToken?.address || ''
       );
       
       if (optimal) {

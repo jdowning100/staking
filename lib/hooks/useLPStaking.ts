@@ -236,7 +236,7 @@ export function useLPStaking(poolId: string) {
             stakingContract.getRewardBalance(),
             stakingContract.startBlock(),
             stakingContract.bonusEndBlock(),
-            provider.getBlockNumber()
+            provider.getBlockNumber(Shard.Cyprus1)
           ]);
 
           // Calculate APR
@@ -375,7 +375,7 @@ export function useLPStaking(poolId: string) {
       
       // Check if we need to approve LP tokens first
       const allowance = await checkAllowance(poolConfig.lpToken, poolConfig.stakingContract);
-      if (parseFloat(allowance) < parseFloat(amount)) {
+      if (parseFloat(allowance.toString()) < parseFloat(amount)) {
         console.log('Approving LP tokens for staking...');
         const approved = await approveToken(poolConfig.lpToken, poolConfig.stakingContract, amountWei);
         if (!approved) {
