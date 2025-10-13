@@ -1,6 +1,6 @@
 'use client';
 import React, { useContext, useRef, useEffect } from 'react';
-import { StateContext } from '@/store';
+import { StateContext, DispatchContext } from '@/store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Coins, TrendingUp, Clock, ExternalLink, ArrowRight, Gift, Loader2 } from 'lucide-react';
@@ -11,9 +11,11 @@ import { useStaking } from '@/lib/hooks/useStaking';
 import useLPStaking from '@/lib/hooks/useLPStaking';
 import { LP_POOLS } from '@/lib/config';
 import { formatBalance } from '@/lib/utils/formatBalance';
+import { requestAccounts } from '@/lib/wallet';
 
 // Connect Wallet Button with particle effects
 const ConnectWalletButton = () => {
+  const dispatch = useContext(DispatchContext);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const particlesRef = useRef<Array<{
@@ -189,6 +191,7 @@ const ConnectWalletButton = () => {
     <div className="rotating-border-wrapper">
       <Button 
         ref={buttonRef}
+        onClick={() => requestAccounts(dispatch)}
         className="w-full h-16 bg-transparent hover:bg-black/30 text-white font-medium rounded border-0 particle-button px-8"
       >
         <div ref={canvasRef} className="particle-canvas"></div>
@@ -645,7 +648,7 @@ export default function Portfolio() {
                 </Button>
               </Link>
               <a 
-                href="https://quaiscan.io" 
+                href={account?.addr ? `https://quaiscan.io/address/${account.addr}` : "https://quaiscan.io"} 
                 target="_blank" 
                 rel="noopener noreferrer"
               >

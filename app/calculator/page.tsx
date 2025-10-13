@@ -319,7 +319,19 @@ const SOAPDistributionModel = () => {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, value }) => `${name}: ${(value as number).toFixed(1)}%`}
+                    label={(entry) => (
+                      <text 
+                        x={entry.x} 
+                        y={entry.y} 
+                        fill="#ffffff" 
+                        fontSize="12" 
+                        fontWeight="500"
+                        textAnchor={Number(entry.x) > Number(entry.cx) ? 'start' : 'end'}
+                        dominantBaseline="central"
+                      >
+                        {`${entry.name}: ${(entry.value as number).toFixed(1)}%`}
+                      </text>
+                    )}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
@@ -335,9 +347,11 @@ const SOAPDistributionModel = () => {
                     contentStyle={{ 
                       backgroundColor: '#1a1a1a', 
                       border: '1px solid #333333',
-                      borderRadius: '8px' 
+                      borderRadius: '8px',
+                      color: '#ffffff'
                     }}
                     labelStyle={{ color: '#999999' }}
+                    itemStyle={{ color: '#ffffff' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
