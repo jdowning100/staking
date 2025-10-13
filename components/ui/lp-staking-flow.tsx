@@ -10,6 +10,7 @@ import useLPStaking from '@/lib/hooks/useLPStaking';
 import { useDEX } from '@/lib/hooks/useDEX';
 import { TokenSwap } from '@/components/ui/token-swap';
 import Image from 'next/image';
+import { formatBalance } from '@/lib/utils/formatBalance';
 
 interface LPStakingFlowProps {
   poolId: string;
@@ -66,6 +67,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
       
       const token0Balance = poolInfo.token0Balance?.balance || BigInt(0);
       const token1Balance = poolInfo.token1Balance?.balance || BigInt(0);
+      const userLPBalance = poolInfo.userLPBalance || BigInt(0);
       
       // Define minimum required amounts (10 tokens each)
       const minAmount = BigInt('10000000000000000000'); // 10 tokens with 18 decimals
@@ -79,8 +81,12 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
       setNeedsToken0(!hasEnoughToken0);
       setNeedsToken1(!hasEnoughToken1);
       
+      // If user has LP tokens, allow them to skip to step 2
+      if (userLPBalance > BigInt(0)) {
+        setCurrentStep(2); // Skip to staking step
+      }
       // Auto-advance if user has enough of both tokens (at least 10 each)
-      if (hasEnoughToken0 && hasEnoughToken1) {
+      else if (hasEnoughToken0 && hasEnoughToken1) {
         setCurrentStep(2); // Skip to LP creation
       }
     }
@@ -105,7 +111,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
       );
       
       if (optimal) {
-        setToken1Amount(parseFloat(optimal.amountB).toFixed(6));
+        setToken1Amount(formatBalance(optimal.amountB));
       }
     } catch (err) {
       console.error('Error calculating optimal token1 amount:', err);
@@ -133,7 +139,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
       );
       
       if (optimal) {
-        setToken0Amount(parseFloat(optimal.amountB).toFixed(6));
+        setToken0Amount(formatBalance(optimal.amountB));
       }
     } catch (err) {
       console.error('Error calculating optimal token0 amount:', err);
@@ -283,6 +289,22 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
               </div>
             </div>
 
+            {/* LP Balance Display - Show if user has any LP tokens */}
+            {poolInfo.userLPBalance > BigInt(0) && (
+              <div className="bg-gradient-to-r from-green-900/20 to-blue-900/20 border border-green-900/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="h-5 w-5 text-green-400" />
+                  <span className="text-green-400 font-medium">You already have LP tokens!</span>
+                </div>
+                <div className="text-white text-lg font-bold">
+                  {poolInfo.userLPBalanceFormatted} {poolInfo.tokens.join('/')} LP
+                </div>
+                <p className="text-sm text-[#999999] mt-2">
+                  You can skip to Step 2 to stake your existing LP tokens or create more LP tokens here.
+                </p>
+              </div>
+            )}
+
             {/* Token Swap Interfaces */}
             {(needsToken0 || needsToken1) && (
               <div className="space-y-4">
@@ -318,10 +340,10 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
               <div className="flex-1"></div>
               <Button 
                 onClick={() => setCurrentStep(2)}
-                disabled={needsToken0 || needsToken1}
+                disabled={(needsToken0 || needsToken1) && poolInfo.userLPBalance === BigInt(0)}
                 className="modern-button px-6 min-w-[140px]"
               >
-                Next: Create LP
+                {poolInfo.userLPBalance > BigInt(0) ? 'Next: Stake LP' : 'Next: Create LP'}
                 <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             </div>
@@ -561,7 +583,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
                     {poolInfo.poolMetrics?.apr ? 
                       `${poolInfo.poolMetrics.apr >= 1000 ? 
                         Math.round(poolInfo.poolMetrics.apr).toLocaleString() : 
-                        poolInfo.poolMetrics.apr.toFixed(1)}%` : '0.0%'}
+                        formatBalance(poolInfo.poolMetrics.apr)}%` : '0%'}
                   </div>
                 </div>
                 <div>

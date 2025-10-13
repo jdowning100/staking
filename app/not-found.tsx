@@ -8,7 +8,7 @@ export default function NotFound() {
 
   const relocateToHomePage = useCallback(() => {
     replace('/');
-  }, []);
+  }, [replace]);
 
   return (
     <ErrorComponent errorMessage="Error 404 // Page_not_found" onClick={relocateToHomePage} buttonText="Go Back" />

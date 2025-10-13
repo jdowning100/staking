@@ -4,6 +4,7 @@ import { StateContext } from '@/store';
 import { APP_TITLE } from '@/lib/config';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronDown, ChevronUp, Users, Calendar, TrendingUp, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
@@ -11,6 +12,7 @@ import Link from 'next/link';
 import { useStaking } from '@/lib/hooks/useStaking';
 import useLPStaking from '@/lib/hooks/useLPStaking';
 import { LP_POOLS } from '@/lib/config';
+import { formatBalance } from '@/lib/utils/formatBalance';
 
 // Token Logo Component for LP pairs
 const TokenLogos = ({ tokens, size = 24 }: { tokens: string[], size?: number }) => {
@@ -90,21 +92,22 @@ const userStakingData = {
   }
 };
 
-// Mock data for pools
-const stakingPools = [
-  {
-    id: 'native-quai',
-    name: 'QUAI',
-    tokens: ['QUAI'],
-    baseApr: 12.5,
-    lockPeriods: [
-      { days: 30, multiplier: 1.0, apr: 12.5 },
-      { days: 60, multiplier: 1.2, apr: 15.0 },
-      { days: 90, multiplier: 1.5, apr: 18.8 }
-    ],
-    totalStaked: 2500000,
-    isActive: true,
-  },
+// Separate pools into categories
+const quaiStakingPool = {
+  id: 'native-quai',
+  name: 'QUAI',
+  tokens: ['QUAI'],
+  baseApr: 12.5,
+  lockPeriods: [
+    { days: 30, multiplier: 1.0, apr: 12.5 },
+    { days: 60, multiplier: 1.2, apr: 15.0 },
+    { days: 90, multiplier: 1.5, apr: 18.8 }
+  ],
+  totalStaked: 2500000,
+  isActive: true,
+};
+
+const lpStakingPools = [
   {
     id: 'wqi-quai',
     name: 'WQI/QUAI LP',
@@ -145,7 +148,7 @@ const stakingPools = [
 ];
 
 const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoading }: { 
-  pool: typeof stakingPools[0], 
+  pool: typeof quaiStakingPool | typeof lpStakingPools[0], 
   stakingData?: any, 
   lpStakingData?: any,
   isStakingLoading?: boolean,
@@ -490,7 +493,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
   const hasStake = userStake.staked > 0;
 
   return (
-    <Card className="modern-card h-fit group">
+    <Card className="modern-card h-full group flex flex-col">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -502,7 +505,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 flex-grow flex flex-col">
         {/* APR Display */}
         <div>
           <div className="flex items-baseline gap-1 mb-1">
@@ -519,19 +522,46 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
               </div>
             ) : (
               <>
-                <span className="text-xl font-bold text-white">
-                  {isNativeQuai && stakingData?.contractInfo ? 
-                    `${stakingData.contractInfo.apy.toFixed(1)}%` : 
-                    hasRealLPData && lpStakingData.poolMetrics ?
-                    `${lpStakingData.poolMetrics.apr >= 1000 ? 
-                      Math.round(lpStakingData.poolMetrics.apr).toLocaleString() : 
-                      lpStakingData.poolMetrics.apr.toFixed(1)}%` :
-                    isNativeQuai ? '0%' : `${currentPeriod.apr.toFixed(1)}%`}
-                </span>
-                {!isNativeQuai && !hasRealLPData && (
-                  <span className="text-sm text-[#999999]">
-                    ~ {(currentPeriod.apr * 1.2).toFixed(1)}%
-                  </span>
+                {/* Native QUAI APR Display */}
+                {isNativeQuai ? (
+                  stakingData?.contractInfo ? (
+                    <span className="text-xl font-bold text-white">
+                      {stakingData.contractInfo.apy.toFixed(1)}%
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                      <span className="text-sm text-[#666666]">Loading...</span>
+                    </div>
+                  )
+                ) : (
+                  /* LP Pool APR Display */
+                  hasRealLPData ? (
+                    lpStakingData.poolMetrics ? (
+                      <>
+                        <span className="text-xl font-bold text-white">
+                          {lpStakingData.poolMetrics.apr >= 1000 ? 
+                            Math.round(lpStakingData.poolMetrics.apr).toLocaleString() : 
+                            lpStakingData.poolMetrics.apr.toFixed(1)}%
+                        </span>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                        <span className="text-sm text-[#666666]">Loading...</span>
+                      </div>
+                    )
+                  ) : (
+                    /* Mock LP Pool APR */
+                    <>
+                      <span className="text-xl font-bold text-white">
+                        {currentPeriod.apr.toFixed(1)}%
+                      </span>
+                      <span className="text-sm text-[#999999]">
+                        ~ {(currentPeriod.apr * 1.2).toFixed(1)}%
+                      </span>
+                    </>
+                  )
                 )}
               </>
             )}
@@ -570,31 +600,46 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
         {/* Total Staked */}
         <div>
           <div className="text-sm font-semibold text-white">
-            Total Staked: {isNativeQuai && isStakingLoading ? (
-              <div className="inline-flex items-center gap-2">
-                <div className="animate-spin rounded-full h-3 w-3 border-b border-red-600"></div>
-                <span className="text-xs text-[#666666]">Loading...</span>
-              </div>
-            ) : hasRealLPData && isLPLoading ? (
-              <div className="inline-flex items-center gap-2">
-                <div className="animate-spin rounded-full h-3 w-3 border-b border-red-600"></div>
-                <span className="text-xs text-[#666666]">Loading...</span>
-              </div>
+            Total Staked: {/* Native QUAI Total Staked Display */}
+            {isNativeQuai ? (
+              stakingData?.contractInfo ? (
+                <>
+                  {stakingData.contractInfo.totalStakedFormatted} {pool.tokens[0]}
+                  <span className="text-xs text-[#666666] ml-2">
+                    ~${formatNumber(Number(stakingData.contractInfo.totalStakedFormatted) * 0.05)}
+                  </span>
+                </>
+              ) : (
+                <div className="inline-flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b border-red-600"></div>
+                  <span className="text-xs text-[#666666]">Loading...</span>
+                </div>
+              )
             ) : (
-              <>
-                {isNativeQuai && stakingData?.contractInfo ? 
-                  `${stakingData.contractInfo.totalStakedFormatted} ${pool.tokens[0]}` :
-                  hasRealLPData && lpStakingData.poolMetrics ?
-                  `${parseFloat(lpStakingData.poolMetrics.totalStakedFormatted).toFixed(2)} LP` :
-                  `${formatNumber(pool.totalStaked)} ${pool.tokens.length > 1 ? 'LP' : pool.tokens[0]}`}
-                <span className="text-xs text-[#666666] ml-2">
-                  ~${isNativeQuai && stakingData?.contractInfo ? 
-                    formatNumber(Number(stakingData.contractInfo.totalStakedFormatted) * 0.05) :
-                    hasRealLPData && lpStakingData.poolMetrics ?
-                    formatNumber(Number(lpStakingData.poolMetrics.totalStakedFormatted) * 0.05) :
-                    formatNumber(pool.totalStaked * 0.05)}
-                </span>
-              </>
+              /* LP Pool Total Staked Display */
+              hasRealLPData ? (
+                lpStakingData.poolMetrics ? (
+                  <>
+                    {formatBalance(lpStakingData.poolMetrics.totalStakedFormatted)} LP
+                    <span className="text-xs text-[#666666] ml-2">
+                      ~${formatNumber(Number(lpStakingData.poolMetrics.totalStakedFormatted) * 0.05)}
+                    </span>
+                  </>
+                ) : (
+                  <div className="inline-flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b border-red-600"></div>
+                    <span className="text-xs text-[#666666]">Loading...</span>
+                  </div>
+                )
+              ) : (
+                /* Mock LP Pool Total Staked */
+                <>
+                  {formatNumber(pool.totalStaked)} {pool.tokens.length > 1 ? 'LP' : pool.tokens[0]}
+                  <span className="text-xs text-[#666666] ml-2">
+                    ~${formatNumber(pool.totalStaked * 0.05)}
+                  </span>
+                </>
+              )
             )}
           </div>
         </div>
@@ -616,7 +661,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
               <div className="space-y-1">
                 <span className="text-xs text-[#999999]">Earned:</span>
                 <div className="text-orange-400 font-semibold text-sm">
-                  {userStake.earned.toFixed(2)} {isWQIQuaiLP ? 'QUAI' : pool.tokens[0]}
+                  {formatBalance(userStake.earned)} {isWQIQuaiLP ? 'QUAI' : pool.tokens[0]}
                 </div>
               </div>
             </div>
@@ -628,6 +673,9 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
           </div>
         )}
 
+        {/* Spacer to push button to bottom */}
+        <div className="flex-grow"></div>
+        
         {/* Stake Button */}
         <div className="pt-4">
           <div className="rotating-border-wrapper">
@@ -730,43 +778,63 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
       <div className="w-full max-w-5xl mx-auto">
-        
-
-        {/* Staking Pools Grid - 2x2 */}
-        <div className="grid grid-cols-2 gap-6">
-          {stakingPools.map((pool) => (
-            <PoolCard 
-              key={pool.id} 
-              pool={pool} 
-              stakingData={pool.id === 'native-quai' ? staking : undefined}
-              lpStakingData={pool.id === 'wqi-quai' ? wqiQuaiLPStaking.poolInfo : undefined}
-              isStakingLoading={pool.id === 'native-quai' ? staking.isLoading : false}
-              isLPLoading={pool.id === 'wqi-quai' ? wqiQuaiLPStaking.isLoading : false}
-            />
-          ))}
-        </div>
-
-        {/* Connection Prompt */}
-        {!account?.addr && (
-          <Card className="modern-card mt-8">
-            <CardContent className="p-8 text-center">
-              <div className="flex flex-col items-center space-y-4">
-                <div className="p-3 bg-red-600/10 rounded-2xl">
-                  <Coins className="h-8 w-8 text-red-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Connect Your Wallet</h3>
-                  <p className="text-[#999999] text-sm">
-                    Connect your Pelagus wallet to start staking and earning rewards
-                  </p>
-                </div>
-                <Button className="bg-slate-700 hover:bg-slate-600 text-white px-8 py-2">
-                  Connect Wallet
-                </Button>
+        <Tabs defaultValue="stake-quai" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-8">
+            <TabsTrigger value="stake-quai">Stake QUAI</TabsTrigger>
+            <TabsTrigger value="lp-staking">LP Staking</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="stake-quai" className="space-y-6">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-bold text-white mb-3">Real Proof-of-Work Powered Yield.</h1>
+              <p className="text-lg text-[#999999]">
+                Stake your $QUAI and receive rewards powered by{' '}
+                <Link href="/what-is-soap" className="text-red-400 hover:text-red-300 underline">
+                  SOAP
+                </Link>
+                .
+              </p>
+            </div>
+            
+            {/* Single QUAI Staking Pool */}
+            <div className="flex justify-center">
+              <div className="w-full max-w-lg">
+                <PoolCard 
+                  pool={quaiStakingPool} 
+                  stakingData={staking}
+                  isStakingLoading={staking.isLoading}
+                />
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="lp-staking" className="space-y-6">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-bold text-white mb-3">Amplify Your Yields with Liquidity.</h1>
+              <p className="text-lg text-[#999999]">
+                Provide liquidity to earn dual rewards from trading fees and{' '}
+                <Link href="/what-is-soap" className="text-red-400 hover:text-red-300 underline">
+                  SOAP
+                </Link>
+                {' '}revenue.
+              </p>
+            </div>
+            
+            {/* LP Pools Grid - Single Row */}
+            <div className="grid grid-cols-3 gap-6">
+              {lpStakingPools.map((pool) => (
+                <PoolCard 
+                  key={pool.id} 
+                  pool={pool} 
+                  lpStakingData={pool.id === 'wqi-quai' ? wqiQuaiLPStaking.poolInfo : undefined}
+                  isLPLoading={pool.id === 'wqi-quai' ? wqiQuaiLPStaking.isLoading : false}
+                />
+              ))}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </main>
   );

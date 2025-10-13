@@ -11,6 +11,7 @@ import { DispatchContext, StateContext } from '@/store';
 import { Button } from '@/components/ui/button';
 import { shortenAddress } from '@/lib/utils';
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 
 export default function Header() {
   const { account, web3Provider } = useContext(StateContext);
@@ -63,7 +64,16 @@ export default function Header() {
                     <p className="text-gray-300 font-light">{shortenAddress(account.addr)}</p>
                   </div>
                 ) : (
-                  'Connect'
+                  <div className="flex items-center gap-2">
+                    <Image
+                      src="/images/pelagus-logo.png"
+                      alt="Pelagus"
+                      width={24}
+                      height={24}
+                      className="rounded-sm"
+                    />
+                    Connect
+                  </div>
                 )}
               </Button>
             )}
@@ -71,7 +81,7 @@ export default function Header() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex gap-6 pb-2 border-b border-[#333333]">
+        <div className="flex gap-6 pb-2">
           {navItems.map((item) => (
             <Link
               key={item.href}

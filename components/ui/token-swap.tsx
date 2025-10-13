@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useDEX } from '@/lib/hooks/useDEX';
 import { StateContext } from '@/store';
+import { formatBalance } from '@/lib/utils/formatBalance';
 
 interface TokenSwapProps {
   fromToken: string;
@@ -99,7 +100,7 @@ export function TokenSwap({ fromToken, toToken, onSwapComplete, className }: Tok
       const amounts = await getAmountsOut(value, swapPath);
       if (amounts && amounts.length > 0) {
         const outputAmount = amounts[amounts.length - 1];
-        setToAmount(parseFloat(outputAmount).toFixed(6));
+        setToAmount(formatBalance(outputAmount));
       } else {
         setToAmount('');
       }
@@ -167,7 +168,7 @@ export function TokenSwap({ fromToken, toToken, onSwapComplete, className }: Tok
                 <TokenLogo token={fromToken} size={20} />
                 <span className="text-white font-medium">{fromToken}</span>
               </div>
-              <span className="text-sm text-[#999999]">Balance: {parseFloat(fromBalance).toFixed(4)}</span>
+              <span className="text-sm text-[#999999]">Balance: {formatBalance(fromBalance)}</span>
             </div>
             <Input
               type="number"
@@ -195,7 +196,7 @@ export function TokenSwap({ fromToken, toToken, onSwapComplete, className }: Tok
                 <TokenLogo token={toToken} size={20} />
                 <span className="text-white font-medium">{toToken}</span>
               </div>
-              <span className="text-sm text-[#999999]">Balance: {parseFloat(toBalance).toFixed(4)}</span>
+              <span className="text-sm text-[#999999]">Balance: {formatBalance(toBalance)}</span>
             </div>
             <Input
               type="number"
@@ -215,7 +216,7 @@ export function TokenSwap({ fromToken, toToken, onSwapComplete, className }: Tok
               <div className="text-sm text-[#999999]">Slippage: {slippage}%</div>
             </div>
             <div className="text-white font-medium">
-              1 {fromToken} = {(Number(toAmount) / Number(fromAmount)).toFixed(6)} {toToken}
+              1 {fromToken} = {formatBalance(Number(toAmount) / Number(fromAmount))} {toToken}
             </div>
           </div>
         )}

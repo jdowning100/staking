@@ -5,6 +5,12 @@ import ERC20ABI from '@/lib/abis/ERC20.json';
 import SmartChefLPABI from '@/lib/SmartChefLP.json';
 import { RPC_URL, TOKEN_ADDRESSES, LP_POOLS } from '@/lib/config';
 
+// Helper function to format numbers with up to 3 decimals but remove trailing zeros
+function formatBalance(value: string | number): string {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return parseFloat(num.toFixed(3)).toString();
+}
+
 export interface TokenBalance {
   address: string;
   symbol: string;
@@ -108,7 +114,7 @@ export function useLPStaking(poolId: string) {
             address: poolConfig.lpToken,
             symbol,
             balance: userBalance,
-            balanceFormatted: formatUnits(userBalance, decimals),
+            balanceFormatted: formatBalance(formatUnits(userBalance, decimals)),
             decimals,
             totalSupply
           };
@@ -137,7 +143,7 @@ export function useLPStaking(poolId: string) {
             address: poolConfig.token0,
             symbol,
             balance,
-            balanceFormatted: formatUnits(balance, decimals),
+            balanceFormatted: formatBalance(formatUnits(balance, decimals)),
             decimals
           };
         } catch (e) {
@@ -155,7 +161,7 @@ export function useLPStaking(poolId: string) {
               address: 'native',
               symbol: 'QUAI',
               balance: quaiBalance,
-              balanceFormatted: formatUnits(quaiBalance, 18),
+              balanceFormatted: formatBalance(formatUnits(quaiBalance, 18)),
               decimals: 18
             };
           } catch (e) {
@@ -174,7 +180,7 @@ export function useLPStaking(poolId: string) {
               address: poolConfig.token1,
               symbol,
               balance,
-              balanceFormatted: formatUnits(balance, decimals),
+              balanceFormatted: formatBalance(formatUnits(balance, decimals)),
               decimals
             };
           } catch (e) {
@@ -204,9 +210,9 @@ export function useLPStaking(poolId: string) {
           
           stakingInfo = {
             stakedAmount: userInfo.amount || BigInt(0),
-            stakedAmountFormatted: formatUnits(userInfo.amount || BigInt(0), 18),
+            stakedAmountFormatted: formatBalance(formatUnits(userInfo.amount || BigInt(0), 18)),
             pendingRewards: pendingRewards || BigInt(0),
-            pendingRewardsFormatted: formatUnits(pendingRewards || BigInt(0), 18),
+            pendingRewardsFormatted: formatBalance(formatUnits(pendingRewards || BigInt(0), 18)),
             rewardDebt: userInfo.rewardDebt || BigInt(0),
             lockStartTime: Number(userInfo.lockStartTime) || 0,
             isLocked,
@@ -256,14 +262,14 @@ export function useLPStaking(poolId: string) {
 
           poolMetrics = {
             totalStaked,
-            totalStakedFormatted: formatUnits(totalStaked, 18),
-            totalValueLocked: formatUnits(totalStaked, 18), // For LP tokens, TVL equals total staked
+            totalStakedFormatted: formatBalance(formatUnits(totalStaked, 18)),
+            totalValueLocked: formatBalance(formatUnits(totalStaked, 18)), // For LP tokens, TVL equals total staked
             apr: estimatedAPR, // True dynamic APR - no cap
             activePositions: estimatedActivePositions,
             rewardPerBlock,
-            rewardPerBlockFormatted: formatUnits(rewardPerBlock, 18),
+            rewardPerBlockFormatted: formatBalance(formatUnits(rewardPerBlock, 18)),
             rewardBalance,
-            rewardBalanceFormatted: formatUnits(rewardBalance, 18),
+            rewardBalanceFormatted: formatBalance(formatUnits(rewardBalance, 18)),
             startBlock: Number(startBlock),
             endBlock: Number(bonusEndBlock),
             isActive: rewardsActive && rewardBalance > BigInt(0)

@@ -42,10 +42,10 @@ export default function WhatIsSOAP() {
                 </p>
                 <p className="text-[#999999] leading-relaxed mb-4">
                   <strong className="text-white">The Problem:</strong> In traditional setups, miners receive rewards from both chains directly, 
-                  often immediately selling the child chain's tokens, creating ongoing selling pressure.
+                  often immediately selling the child chain&apos;s tokens, creating ongoing selling pressure.
                 </p>
                 <p className="text-[#999999] leading-relaxed">
-                  <strong className="text-white">SOAP's Solution:</strong> Channel that flow into permanent protocol support by converting 
+                  <strong className="text-white">SOAP&apos;s Solution:</strong> Channel that flow into permanent protocol support by converting 
                   external mining rewards into QUAI buybacks instead of direct miner payouts.
                 </p>
               </div>
@@ -117,7 +117,7 @@ export default function WhatIsSOAP() {
                   <h3 className="text-lg font-medium text-blue-400 mb-2">📋 Workshares</h3>
                   <p className="text-[#999999] text-sm mb-2">
                     QUAI blocks are produced exclusively by KAWPOW miners, but other algorithms 
-                    (SHA256d, Scrypt) can submit "workshares" that get included in blocks.
+                    (SHA256d, Scrypt) can submit &ldquo;workshares&rdquo; that get included in blocks.
                   </p>
                   <p className="text-[#999999] text-sm">
                     Each workshare proves computational work on parent chains and earns proportional QUAI rewards.
@@ -153,7 +153,7 @@ export default function WhatIsSOAP() {
                     QUAI continues producing KAWPOW blocks normally.
                   </p>
                   <p className="text-[#999999] text-sm">
-                    There's no liveness coupling - workshares are purely additive benefits.
+                    There&apos;s no liveness coupling - workshares are purely additive benefits.
                   </p>
                 </div>
               </div>

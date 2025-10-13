@@ -56,7 +56,7 @@ export default function HowToStake() {
                   <div className="flex-1 space-y-2">
                     <h3 className="text-lg font-medium text-white">Connect Your Wallet</h3>
                     <p className="text-[#999999]">
-                      Click the "Connect" button in the header to connect your Pelagus wallet. Make sure you're on the Cyprus-1 network.
+                      Click the &ldquo;Connect&rdquo; button in the header to connect your Pelagus wallet. Make sure you&apos;re on the Cyprus-1 network.
                     </p>
                   </div>
                 </div>
@@ -80,7 +80,7 @@ export default function HowToStake() {
                   <div className="flex-1 space-y-2">
                     <h3 className="text-lg font-medium text-white">Confirm Transaction</h3>
                     <p className="text-[#999999]">
-                      Click "Deposit" and confirm the transaction in your Pelagus wallet. Your tokens will be staked after the transaction is confirmed.
+                      Click &ldquo;Deposit&rdquo; and confirm the transaction in your Pelagus wallet. Your tokens will be staked after the transaction is confirmed.
                     </p>
                   </div>
                 </div>
@@ -117,7 +117,7 @@ export default function HowToStake() {
                     ⏰ Grace Period
                   </h3>
                   <p className="text-[#999999]">
-                    After the lock period ends, you enter a grace period where you can withdraw your tokens. If you don't withdraw during the grace period, your tokens automatically re-enter a new lock cycle.
+                    After the lock period ends, you enter a grace period where you can withdraw your tokens. If you don&apos;t withdraw during the grace period, your tokens automatically re-enter a new lock cycle.
                   </p>
                 </div>
 

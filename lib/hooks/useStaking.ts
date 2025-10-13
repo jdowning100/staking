@@ -7,6 +7,12 @@ import { RPC_URL, STAKING_CONTRACT_ADDRESS, LOCK_PERIOD, GRACE_PERIOD, SECONDS_P
 // Re-export formatQuai for use in other components
 export { formatQuai, parseQuai };
 
+// Helper function to format numbers with up to 3 decimals but remove trailing zeros
+export function formatBalance(value: string | number): string {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return parseFloat(num.toFixed(3)).toString();
+}
+
 export interface UserStakingInfo {
   stakedAmount: bigint;
   stakedAmountFormatted: string;
@@ -61,9 +67,93 @@ export function useStaking() {
     return Math.min(apy, 1000); // Cap at 1000% to avoid display issues
   };
 
-  // Load staking information
+  // Load contract information (available without wallet connection)
+  const loadContractInfo = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const provider = new JsonRpcProvider(RPC_URL);
+      const stakingContract = new Contract(STAKING_CONTRACT_ADDRESS, SmartChefNativeABI, provider);
+
+      // Get current block
+      const currentBlock = await provider.getBlockNumber(Shard.Cyprus1);
+
+      // Get contract info with error handling
+      let totalStaked = BigInt(0);
+      let rewardPerBlock = BigInt(0);
+      let poolLimitPerUser = BigInt(0);
+      let hasUserLimit = false;
+      let contractBalance = BigInt(0);
+      let rewardBalance = BigInt(0);
+
+      try {
+        totalStaked = await stakingContract.totalStaked();
+      } catch (e) {
+        console.warn('Failed to get total staked:', e);
+      }
+
+      try {
+        rewardPerBlock = await stakingContract.rewardPerBlock();
+      } catch (e) {
+        console.warn('Failed to get reward per block:', e);
+      }
+
+      try {
+        poolLimitPerUser = await stakingContract.poolLimitPerUser();
+        hasUserLimit = await stakingContract.hasUserLimit();
+      } catch (e) {
+        console.warn('Failed to get pool limits:', e);
+      }
+
+      try {
+        contractBalance = await provider.getBalance(STAKING_CONTRACT_ADDRESS);
+      } catch (e) {
+        console.warn('Failed to get contract balance:', e);
+      }
+
+      try {
+        rewardBalance = await stakingContract.getRewardBalance();
+      } catch (e) {
+        console.warn('Failed to get reward balance:', e);
+      }
+
+      // Calculate APY
+      const apy = calculateAPY(rewardPerBlock, totalStaked);
+
+      // Set contract info
+      setContractInfo({
+        totalStaked,
+        totalStakedFormatted: formatBalance(formatQuai(totalStaked)),
+        rewardPerBlock,
+        rewardPerBlockFormatted: formatBalance(formatQuai(rewardPerBlock)),
+        poolLimitPerUser,
+        poolLimitPerUserFormatted: formatBalance(formatQuai(poolLimitPerUser)),
+        hasUserLimit,
+        contractBalance,
+        contractBalanceFormatted: formatBalance(formatQuai(contractBalance)),
+        rewardBalance,
+        rewardBalanceFormatted: formatBalance(formatQuai(rewardBalance)),
+        apy,
+        currentBlock,
+        userQuaiBalance: BigInt(0), // Will be set when user info is loaded
+        userQuaiBalanceFormatted: '0',
+      });
+    } catch (error: any) {
+      console.error('Failed to load contract info:', error);
+      setError('Failed to load staking information. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Load user-specific staking information (requires wallet connection)
   const loadStakingInfo = useCallback(async () => {
-    if (!account?.addr) return;
+    if (!account?.addr) {
+      // If no account, just load contract info
+      loadContractInfo();
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -190,9 +280,9 @@ export function useStaking() {
       // Set user info
       setUserInfo({
         stakedAmount,
-        stakedAmountFormatted: formatQuai(stakedAmount),
+        stakedAmountFormatted: formatBalance(formatQuai(stakedAmount)),
         pendingRewards,
-        pendingRewardsFormatted: formatQuai(pendingRewards),
+        pendingRewardsFormatted: formatBalance(formatQuai(pendingRewards)),
         lockStartTime,
         isLocked,
         isInGracePeriod,
@@ -207,20 +297,20 @@ export function useStaking() {
       // Set contract info
       setContractInfo({
         totalStaked,
-        totalStakedFormatted: formatQuai(totalStaked),
+        totalStakedFormatted: formatBalance(formatQuai(totalStaked)),
         rewardPerBlock,
-        rewardPerBlockFormatted: formatQuai(rewardPerBlock),
+        rewardPerBlockFormatted: formatBalance(formatQuai(rewardPerBlock)),
         poolLimitPerUser,
-        poolLimitPerUserFormatted: formatQuai(poolLimitPerUser),
+        poolLimitPerUserFormatted: formatBalance(formatQuai(poolLimitPerUser)),
         hasUserLimit,
         contractBalance,
-        contractBalanceFormatted: formatQuai(contractBalance),
+        contractBalanceFormatted: formatBalance(formatQuai(contractBalance)),
         rewardBalance,
-        rewardBalanceFormatted: formatQuai(rewardBalance),
+        rewardBalanceFormatted: formatBalance(formatQuai(rewardBalance)),
         apy,
         currentBlock,
         userQuaiBalance,
-        userQuaiBalanceFormatted: formatQuai(userQuaiBalance),
+        userQuaiBalanceFormatted: formatBalance(formatQuai(userQuaiBalance)),
       });
     } catch (error: any) {
       console.error('Failed to load staking info:', error);
@@ -228,7 +318,7 @@ export function useStaking() {
     } finally {
       setIsLoading(false);
     }
-  }, [account]);
+  }, [account, loadContractInfo]);
 
   // Deposit tokens
   const deposit = useCallback(async (amount: string) => {
@@ -432,7 +522,7 @@ export function useStaking() {
       setUserInfo(prev => prev ? {
         ...prev,
         pendingRewards,
-        pendingRewardsFormatted: formatQuai(pendingRewards),
+        pendingRewardsFormatted: formatBalance(formatQuai(pendingRewards)),
       } : null);
     } catch (error) {
       console.warn('Failed to refresh rewards:', error);
@@ -444,14 +534,15 @@ export function useStaking() {
     loadStakingInfo();
   }, [loadStakingInfo]);
 
-  // Load staking info when wallet is connected
+  // Load staking info on mount and when wallet connection changes
   useEffect(() => {
-    if (account?.addr) {
-      loadStakingInfo();
-      // No polling - only refresh after transactions
-    } else {
+    // Always load staking info (will load contract info if no wallet, or full info if wallet connected)
+    loadStakingInfo();
+    // No polling - only refresh after transactions
+    
+    // Clear user info if no account connected
+    if (!account?.addr) {
       setUserInfo(null);
-      setContractInfo(null);
     }
   }, [account, loadStakingInfo]);
 

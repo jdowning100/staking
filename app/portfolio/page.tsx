@@ -1,5 +1,5 @@
 'use client';
-import React, { useContext } from 'react';
+import React, { useContext, useRef, useEffect } from 'react';
 import { StateContext } from '@/store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,193 @@ import Link from 'next/link';
 import { useStaking } from '@/lib/hooks/useStaking';
 import useLPStaking from '@/lib/hooks/useLPStaking';
 import { LP_POOLS } from '@/lib/config';
+import { formatBalance } from '@/lib/utils/formatBalance';
+
+// Connect Wallet Button with particle effects
+const ConnectWalletButton = () => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const particlesRef = useRef<Array<{
+    id: number;
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    targetX: number;
+    targetY: number;
+    size: string;
+    element: HTMLDivElement;
+  }>>([]);
+  const animationRef = useRef<number>();
+  const isHovered = useRef(false);
+  const mousePos = useRef({ x: 0, y: 0 });
+  const prevMousePos = useRef({ x: 0, y: 0 });
+  const isMouseMoving = useRef(false);
+  const mouseTimeoutRef = useRef<NodeJS.Timeout>();
+
+  useEffect(() => {
+    const button = buttonRef.current;
+    const canvas = canvasRef.current;
+    if (!button || !canvas) return;
+
+    // Pre-load particles
+    const initializeParticles = () => {
+      const rect = button.getBoundingClientRect();
+      const particleCount = 12;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const sizes = ['size-small', 'size-medium', 'size-large'];
+        const size = sizes[Math.floor(Math.random() * sizes.length)];
+        
+        const particle = document.createElement('div');
+        particle.className = `particle ${size}`;
+        particle.style.opacity = '0';
+        
+        const padding = 15;
+        const x = padding + Math.random() * (rect.width - padding * 2);
+        const y = padding + Math.random() * (rect.height - padding * 2);
+        
+        particle.style.left = `${x}px`;
+        particle.style.top = `${y}px`;
+        
+        canvas.appendChild(particle);
+
+        const particleData = {
+          id: i,
+          x,
+          y,
+          vx: 0,
+          vy: 0,
+          targetX: x,
+          targetY: y,
+          size,
+          element: particle
+        };
+
+        particlesRef.current.push(particleData);
+      }
+    };
+
+    const updateParticles = () => {
+      const rect = button.getBoundingClientRect();
+      
+      particlesRef.current.forEach((particle, index) => {
+        const isPreLoaded = particle.id < 20;
+        
+        if (isPreLoaded && isHovered.current) {
+          const dx = mousePos.current.x - particle.x;
+          const dy = mousePos.current.y - particle.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          const lag = 0.015 + (index * 0.008);
+          const followDistance = 25 + (index * 6);
+          
+          if (isMouseMoving.current || distance > followDistance) {
+            particle.vx += dx * lag;
+            particle.vy += dy * lag;
+            
+            if (isMouseMoving.current) {
+              particle.vx += (Math.random() - 0.5) * 0.6;
+              particle.vy += (Math.random() - 0.5) * 0.6;
+            }
+          }
+          
+          const friction = isMouseMoving.current ? 0.90 : 0.85;
+          particle.vx *= friction;
+          particle.vy *= friction;
+        }
+        
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        
+        // Boundary collision
+        if (particle.x <= 0 || particle.x >= rect.width - 8) {
+          particle.vx *= -0.8;
+          particle.x = Math.max(0, Math.min(rect.width - 8, particle.x));
+        }
+        if (particle.y <= 0 || particle.y >= rect.height - 8) {
+          particle.vy *= -0.8;
+          particle.y = Math.max(0, Math.min(rect.height - 8, particle.y));
+        }
+        
+        particle.element.style.left = `${particle.x}px`;
+        particle.element.style.top = `${particle.y}px`;
+      });
+      
+      if (isHovered.current) {
+        animationRef.current = requestAnimationFrame(updateParticles);
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = button.getBoundingClientRect();
+      prevMousePos.current = { ...mousePos.current };
+      mousePos.current.x = e.clientX - rect.left;
+      mousePos.current.y = e.clientY - rect.top;
+      
+      const dx = mousePos.current.x - prevMousePos.current.x;
+      const dy = mousePos.current.y - prevMousePos.current.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      isMouseMoving.current = distance > 1;
+      
+      if (mouseTimeoutRef.current) {
+        clearTimeout(mouseTimeoutRef.current);
+      }
+      mouseTimeoutRef.current = setTimeout(() => {
+        isMouseMoving.current = false;
+      }, 100);
+    };
+
+    const handleMouseEnter = () => {
+      isHovered.current = true;
+      particlesRef.current.forEach(particle => {
+        if (particle.id < 20) {
+          particle.element.style.opacity = '1';
+        }
+      });
+      updateParticles();
+    };
+
+    const handleMouseLeave = () => {
+      isHovered.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      particlesRef.current.forEach(particle => {
+        if (particle.id < 20) {
+          particle.element.style.opacity = '0';
+        }
+      });
+    };
+
+    initializeParticles();
+    button.addEventListener('mousemove', handleMouseMove);
+    button.addEventListener('mouseenter', handleMouseEnter);
+    button.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      button.removeEventListener('mousemove', handleMouseMove);
+      button.removeEventListener('mouseenter', handleMouseEnter);
+      button.removeEventListener('mouseleave', handleMouseLeave);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div className="rotating-border-wrapper">
+      <Button 
+        ref={buttonRef}
+        className="w-full h-16 bg-transparent hover:bg-black/30 text-white font-medium rounded border-0 particle-button px-8"
+      >
+        <div ref={canvasRef} className="particle-canvas"></div>
+        Connect Wallet
+      </Button>
+    </div>
+  );
+};
 
 // Token Logo Component
 const TokenLogos = ({ tokens, size = 24 }: { tokens: string[], size?: number }) => {
@@ -211,9 +398,7 @@ export default function Portfolio() {
               <p className="text-[#999999] mb-6">
                 Connect your wallet to view your staking positions and earnings
               </p>
-              <Button className="bg-red-600 hover:bg-red-700 text-white">
-                Connect Wallet
-              </Button>
+              <ConnectWalletButton />
             </CardContent>
           </Card>
         </div>
@@ -253,7 +438,7 @@ export default function Portfolio() {
               <TrendingUp className="h-16 w-16 text-[#666666] mx-auto mb-4" />
               <h2 className="text-xl font-bold text-white mb-2">No Active Positions</h2>
               <p className="text-[#999999] mb-6">
-                You don't have any active staking positions yet. Start staking to see your portfolio here.
+                You don&apos;t have any active staking positions yet. Start staking to see your portfolio here.
               </p>
               <Link href="/">
                 <Button className="bg-red-600 hover:bg-red-700 text-white">
@@ -284,7 +469,7 @@ export default function Portfolio() {
           
           <Card className="modern-card">
             <CardContent className="p-4 text-center">
-              <div className="text-xl font-bold text-orange-400">{totalEarned.toFixed(2)}</div>
+              <div className="text-xl font-bold text-orange-400">{formatBalance(totalEarned)}</div>
               <div className="text-xs text-[#999999]">Total Earned</div>
               <div className="text-xs text-[#666666]">QUAI</div>
             </CardContent>
@@ -317,7 +502,7 @@ export default function Portfolio() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">Available Rewards</h3>
-                  <p className="text-2xl font-bold text-orange-400">{totalClaimable.toFixed(2)} QUAI</p>
+                  <p className="text-2xl font-bold text-orange-400">{formatBalance(totalClaimable)} QUAI</p>
                   <p className="text-xs text-[#999999]">Claim rewards from individual positions below</p>
                 </div>
               </div>
@@ -400,7 +585,7 @@ export default function Portfolio() {
                       </div>
                       
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
-                        <div className="text-lg font-bold text-orange-400">{position.earned.toFixed(2)}</div>
+                        <div className="text-lg font-bold text-orange-400">{formatBalance(position.earned)}</div>
                         <div className="text-xs text-[#999999]">
                           Earned {position.id === 'wqi-quai' ? 'QUAI' : position.tokens[0]}
                         </div>

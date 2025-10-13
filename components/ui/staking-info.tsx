@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, ChevronDown, ChevronUp, ExternalLink, Lock, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatQuai } from '@/lib/hooks/useStaking';
+import { formatBalance } from '@/lib/utils/formatBalance';
 
 interface StakingInfoProps {
   userInfo: UserStakingInfo | null;
@@ -128,7 +129,7 @@ export function StakingInfo({
             <div className="flex justify-between">
               <span className="text-[#999999]">APY</span>
               <span className="font-medium text-green-400">
-                {contractInfo?.apy ? `${contractInfo.apy.toFixed(2)}%` : '0%'}
+                {contractInfo?.apy ? `${formatBalance(contractInfo.apy)}%` : '0%'}
               </span>
             </div>
             <div className="flex justify-between">
