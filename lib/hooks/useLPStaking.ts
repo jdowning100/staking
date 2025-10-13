@@ -34,11 +34,17 @@ export interface LPStakingInfo {
   stakedAmountFormatted: string;
   pendingRewards: bigint;
   pendingRewardsFormatted: string;
+  claimableRewards: bigint;
+  claimableRewardsFormatted: string;
+  totalDelayedRewards: bigint;
+  totalDelayedRewardsFormatted: string;
+  delayedRewards: { amount: bigint; unlockTime: number; amountFormatted: string; timeUntilUnlock: number }[];
   rewardDebt: bigint;
   lockStartTime: number;
   isLocked: boolean;
   isInGracePeriod: boolean;
   timeUntilUnlock: number;
+  timeUntilWithdrawalAvailable: number;
   timeLeftInGracePeriod: number;
   currentCycle: number;
 }
@@ -196,48 +202,128 @@ export function useLPStaking(poolId: string) {
       if (poolConfig.stakingContract && poolConfig.stakingContract !== '0x0000000000000000000000000000000000000000') {
         try {
           const stakingContract = new Contract(poolConfig.stakingContract, SmartChefLPABI, provider);
+
+          // Get user staking info (wrap each call to avoid failing the whole block)
+          let userInfo: any = { amount: BigInt(0), rewardDebt: BigInt(0), lockStartTime: 0 };
+          try {
+            userInfo = await stakingContract.userInfo(account.addr);
+          } catch (e) {
+            console.warn('LP userInfo() unavailable on staking contract, using defaults');
+          }
           
-          // Get user staking info
-          const userInfo = await stakingContract.userInfo(account.addr);
-          const pendingRewards = await stakingContract.pendingReward(account.addr);
-          
-          // Get lock status
-          const isLocked = await stakingContract.isLocked(account.addr);
-          const isInGracePeriod = await stakingContract.isInGracePeriod(account.addr);
-          const timeUntilUnlock = Number(await stakingContract.timeUntilUnlock(account.addr));
-          const timeLeftInGracePeriod = Number(await stakingContract.timeLeftInGracePeriod(account.addr));
-          const currentCycle = Number(await stakingContract.getCurrentCycle(account.addr));
-          
+          let pendingRewards: bigint = BigInt(0);
+          try {
+            pendingRewards = await stakingContract.pendingReward(account.addr);
+          } catch (e) {
+            console.warn('LP pendingReward() unavailable on staking contract, using 0');
+          }
+
+          // Attempt to gather lock details via getLockInfo (preferred),
+          // then gracefully fall back to computing using LOCK_PERIOD/GRACE_PERIOD.
+          let isLocked = false;
+          let isInGracePeriod = false;
+          let timeUntilUnlock = 0;
+          let timeLeftInGracePeriod = 0;
+          let currentCycle = 0;
+
+          let LOCK_PERIOD_ONCHAIN: bigint | null = null;
+          let GRACE_PERIOD_ONCHAIN: bigint | null = null;
+
+          // Try consolidated getter first
+          try {
+            const lockInfo = await stakingContract.getLockInfo(account.addr);
+            // lockInfo: [lockStartTime, currentCycle, locked, inGracePeriod, timeUntilUnlock_, timeLeftInGrace_]
+            if (lockInfo) {
+              const [lockStartTime_, currentCycle_, locked_, inGracePeriod_, tUnlock_, tGrace_] = lockInfo as [bigint, bigint, boolean, boolean, bigint, bigint];
+              userInfo.lockStartTime = Number(lockStartTime_ ?? userInfo.lockStartTime);
+              isLocked = Boolean(locked_);
+              isInGracePeriod = Boolean(inGracePeriod_);
+              timeUntilUnlock = Number(tUnlock_ ?? 0);
+              timeLeftInGracePeriod = Number(tGrace_ ?? 0);
+              currentCycle = Number(currentCycle_ ?? 0);
+            }
+          } catch (e) {
+            // Fallback path: compute lock status if possible
+            try {
+              LOCK_PERIOD_ONCHAIN = await stakingContract.LOCK_PERIOD();
+            } catch {}
+            try {
+              GRACE_PERIOD_ONCHAIN = await stakingContract.GRACE_PERIOD();
+            } catch {}
+
+            const lockStart = Number(userInfo.lockStartTime ?? 0);
+            const nowTs = Math.floor(Date.now() / 1000);
+            const lockPeriodSec = Number((LOCK_PERIOD_ONCHAIN ?? BigInt(0)));
+            const gracePeriodSec = Number((GRACE_PERIOD_ONCHAIN ?? BigInt(0)));
+
+            if (lockStart > 0 && lockPeriodSec > 0) {
+              const unlockTs = lockStart + lockPeriodSec;
+              if (nowTs < unlockTs) {
+                isLocked = true;
+                timeUntilUnlock = Math.max(0, unlockTs - nowTs);
+              } else if (gracePeriodSec > 0 && nowTs < unlockTs + gracePeriodSec) {
+                isInGracePeriod = true;
+                timeLeftInGracePeriod = Math.max(0, unlockTs + gracePeriodSec - nowTs);
+              }
+              if (lockPeriodSec > 0) {
+                currentCycle = Math.max(0, Math.floor((nowTs - lockStart) / lockPeriodSec));
+              }
+            }
+          }
+
+          // Rewards delay views
+          let claimableRewards: bigint = BigInt(0);
+          let totalDelayedRewards: bigint = BigInt(0);
+          let delayedRewardsArr: any[] = [];
+          let timeUntilWithdrawalAvailable = 0;
+          try { claimableRewards = await stakingContract.claimableRewards(account.addr); } catch {}
+          try { totalDelayedRewards = await stakingContract.totalDelayedRewards(account.addr); } catch {}
+          try { delayedRewardsArr = await stakingContract.getDelayedRewards(account.addr); } catch {}
+          try { timeUntilWithdrawalAvailable = Number(await stakingContract.timeUntilWithdrawalAvailable(account.addr)); } catch {}
+
           stakingInfo = {
             stakedAmount: userInfo.amount || BigInt(0),
             stakedAmountFormatted: formatBalance(formatUnits(userInfo.amount || BigInt(0), 18)),
             pendingRewards: pendingRewards || BigInt(0),
             pendingRewardsFormatted: formatBalance(formatUnits(pendingRewards || BigInt(0), 18)),
+            claimableRewards,
+            claimableRewardsFormatted: formatBalance(formatUnits(claimableRewards || BigInt(0), 18)),
+            totalDelayedRewards,
+            totalDelayedRewardsFormatted: formatBalance(formatUnits(totalDelayedRewards || BigInt(0), 18)),
+            delayedRewards: (delayedRewardsArr || []).map((r: any) => {
+              const amount: bigint = (r && (r.amount ?? r[0])) || BigInt(0);
+              const unlockTime: number = Number((r && (r.unlockTime ?? r[1])) || 0);
+              return {
+                amount,
+                unlockTime,
+                amountFormatted: formatBalance(formatUnits(amount, 18)),
+                timeUntilUnlock: Math.max(0, unlockTime - Math.floor(Date.now() / 1000))
+              };
+            }),
             rewardDebt: userInfo.rewardDebt || BigInt(0),
             lockStartTime: Number(userInfo.lockStartTime) || 0,
             isLocked,
             isInGracePeriod,
             timeUntilUnlock,
+            timeUntilWithdrawalAvailable,
             timeLeftInGracePeriod,
             currentCycle
           };
 
-          // Get global pool metrics
-          const [
-            totalStaked,
-            rewardPerBlock,
-            rewardBalance,
-            startBlock,
-            bonusEndBlock,
-            currentBlockNumber
-          ] = await Promise.all([
-            stakingContract.totalStaked(),
-            stakingContract.rewardPerBlock(),
-            stakingContract.getRewardBalance(),
-            stakingContract.startBlock(),
-            stakingContract.bonusEndBlock(),
-            provider.getBlockNumber(Shard.Cyprus1)
-          ]);
+          // Get global pool metrics (isolate calls to avoid failing the whole section)
+          let totalStaked = BigInt(0);
+          let rewardPerBlock = BigInt(0);
+          let rewardBalance = BigInt(0);
+          let startBlock = BigInt(0);
+          let bonusEndBlock = BigInt(0);
+          let currentBlockNumber = 0;
+
+          try { totalStaked = await stakingContract.totalStaked(); } catch {}
+          try { rewardPerBlock = await stakingContract.rewardPerBlock(); } catch {}
+          try { rewardBalance = await stakingContract.getRewardBalance(); } catch {}
+          try { startBlock = await stakingContract.startBlock(); } catch {}
+          try { bonusEndBlock = await stakingContract.bonusEndBlock(); } catch {}
+          try { currentBlockNumber = await provider.getBlockNumber(Shard.Cyprus1); } catch {}
 
           // Calculate APR
           // APR = (rewardPerBlock * blocksPerYear) / totalStaked * 100
@@ -258,7 +344,9 @@ export function useLPStaking(poolId: string) {
           const estimatedActivePositions = totalStakedFormatted > 0 ? Math.ceil(totalStakedFormatted / averageStakeSize) : 0;
 
           // Check if rewards are still active
-          const rewardsActive = currentBlockNumber < Number(bonusEndBlock);
+          const rewardsActive = bonusEndBlock && Number(bonusEndBlock) > 0
+            ? currentBlockNumber < Number(bonusEndBlock)
+            : true;
 
           poolMetrics = {
             totalStaked,

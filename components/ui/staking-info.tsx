@@ -120,12 +120,13 @@ export function StakingInfo({
     'Deposit'
   );
 
+  const canWithdraw = !!(userInfo && (userInfo.isInExitPeriod || userInfo.canExecuteWithdraw));
   const withdrawBtnContent = isTransacting ? (
     <span className="inline-flex items-center">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       Processing...
     </span>
-  ) : !userInfo?.canWithdraw ? (
+  ) : !canWithdraw ? (
     <span className="inline-flex items-center">
       <Lock className="mr-2 h-4 w-4" />
       Locked

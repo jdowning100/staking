@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// Using native-like toggle buttons for tabs (no shadcn Tabs here)
 import { Progress } from '@/components/ui/progress';
 import { ArrowRight, Plus, Zap, AlertCircle, CheckCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -52,6 +52,8 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
   const [token0Amount, setToken0Amount] = useState('');
   const [token1Amount, setToken1Amount] = useState('');
   const [stakeAmount, setStakeAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'rewards'>('deposit');
   const [needsToken0, setNeedsToken0] = useState(false);
   const [needsToken1, setNeedsToken1] = useState(false);
   const [isCalculatingOptimal, setIsCalculatingOptimal] = useState(false);
@@ -59,8 +61,8 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
   // Check what user needs and auto-advance logic
   useEffect(() => {
     if (poolInfo) {
-      // If in manage mode and user has staked tokens, go directly to management (step 3)
-      if (initialMode === 'manage' && (poolInfo.stakingInfo?.stakedAmount || BigInt(0)) > BigInt(0)) {
+      // In manage mode, always show the management view
+      if (initialMode === 'manage') {
         setCurrentStep(3);
         return;
       }
@@ -213,21 +215,23 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
 
   return (
     <div className="space-y-6">
-      {/* Progress Header */}
-      <Card className="modern-card">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between mb-2">
-            <CardTitle className="text-xl text-white">{poolInfo.name} Staking Flow</CardTitle>
-            <div className="text-sm text-[#999999]">Step {currentStep}/3</div>
-          </div>
-          <Progress value={stepProgress} className="h-2" />
-          <div className="flex justify-between text-xs text-[#999999] mt-2">
-            <span className={currentStep >= 1 ? 'text-orange-400' : ''}>Get Tokens</span>
-            <span className={currentStep >= 2 ? 'text-orange-400' : ''}>Create LP</span>
-            <span className={currentStep >= 3 ? 'text-orange-400' : ''}>Stake LP</span>
-          </div>
-        </CardHeader>
-      </Card>
+      {/* Progress Header (hidden in manage mode) */}
+      {initialMode !== 'manage' && (
+        <Card className="modern-card">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between mb-2">
+              <CardTitle className="text-xl text-white">{poolInfo.name} Staking Flow</CardTitle>
+              <div className="text-sm text-[#999999]">Step {currentStep}/3</div>
+            </div>
+            <Progress value={stepProgress} className="h-2" />
+            <div className="flex justify-between text-xs text-[#999999] mt-2">
+              <span className={currentStep >= 1 ? 'text-orange-400' : ''}>Get Tokens</span>
+              <span className={currentStep >= 2 ? 'text-orange-400' : ''}>Create LP</span>
+              <span className={currentStep >= 3 ? 'text-orange-400' : ''}>Stake LP</span>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
 
       {/* Step 1: Get Required Tokens */}
       {currentStep === 1 && (
@@ -477,194 +481,174 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
         </Card>
       )}
 
-      {/* Step 3: Stake LP Tokens */}
+      {/* Step 3: Stake LP Tokens / Manage */}
       {currentStep === 3 && (
         <Card className="modern-card">
           <CardHeader>
-            <CardTitle className="text-lg text-white flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-400" />
-              Step 3: Stake LP Tokens
-            </CardTitle>
-            <CardDescription className="text-[#999999]">
-              Stake your LP tokens to earn rewards in the SOAP protocol
+            <CardTitle className="text-lg text-white text-center">{poolInfo.name} Management</CardTitle>
+            <CardDescription className="text-[#999999] text-center">
+              Deposit LP tokens, withdraw during grace, and claim rewards
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* LP Balance Display */}
-            <div className="border border-[#333333] rounded-lg p-4 bg-[#0a0a0a]">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center">
-                  <TokenLogo token={poolInfo.tokens[0]} size={16} />
-                  <TokenLogo token={poolInfo.tokens[1]} size={16} />
+          <CardContent className="space-y-5">
+            {/* User Staking Info (list view like native) */}
+            <div className="pt-1 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-[#999999]">Your Stake</span>
+                <span className="font-medium text-white">{poolInfo.stakingInfo?.stakedAmountFormatted || '0'} LP</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#999999]">Claimable Rewards</span>
+                <span className="font-medium text-green-400">{poolInfo.stakingInfo?.claimableRewardsFormatted || '0'} QUAI</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#999999]">Locked Rewards</span>
+                <span className="font-medium text-yellow-400">
+                  {poolInfo.stakingInfo ?
+                    formatBalance(
+                      Number(poolInfo.stakingInfo.totalDelayedRewardsFormatted) - Number(poolInfo.stakingInfo.claimableRewardsFormatted)
+                    ) : '0'} QUAI
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#999999]">Status</span>
+                <span className={cn('font-medium', poolInfo.stakingInfo?.isLocked ? 'text-yellow-400' : (poolInfo.stakingInfo?.isInGracePeriod ? 'text-green-400' : 'text-white'))}>
+                  {poolInfo.stakingInfo?.isLocked
+                    ? `Locked (${poolInfo.stakingInfo.timeUntilUnlock}s)`
+                    : poolInfo.stakingInfo?.isInGracePeriod
+                      ? `Grace Period (${poolInfo.stakingInfo.timeLeftInGracePeriod}s)`
+                      : 'Unlocked'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#999999]">Current Cycle</span>
+                <span className="font-medium text-white">{poolInfo.stakingInfo?.currentCycle ?? 0}</span>
+              </div>
+            </div>
+
+            {/* Action Tabs (native-like buttons) */}
+            <div className="pt-4">
+              <div className="flex gap-2 mb-4">
+                <Button
+                  variant={activeTab === 'deposit' ? 'default' : 'outline'}
+                  onClick={() => setActiveTab('deposit')}
+                  className={cn('flex-1', activeTab === 'deposit' ? 'bg-red-9 hover:bg-red-10 text-white' : 'border-[#333333] text-[#999999] hover:bg-[#222222]')}
+                >
+                  Deposit
+                </Button>
+                <Button
+                  variant={activeTab === 'withdraw' ? 'default' : 'outline'}
+                  onClick={() => setActiveTab('withdraw')}
+                  className={cn('flex-1', activeTab === 'withdraw' ? 'bg-red-9 hover:bg-red-10 text-white' : 'border-[#333333] text-[#999999] hover:bg-[#222222]')}
+                >
+                  Withdraw
+                </Button>
+                <Button
+                  variant={activeTab === 'rewards' ? 'default' : 'outline'}
+                  onClick={() => setActiveTab('rewards')}
+                  className={cn('flex-1', activeTab === 'rewards' ? 'bg-red-9 hover:bg-red-10 text-white' : 'border-[#333333] text-[#999999] hover:bg-[#222222]')}
+                >
+                  Rewards
+                </Button>
+              </div>
+
+              {activeTab === 'deposit' && (
+                <div className="space-y-3">
+                  <div className="text-sm text-[#999999]">Available: {poolInfo.userLPBalanceFormatted} LP</div>
+                  <Input
+                    type="number"
+                    placeholder="Amount to deposit (LP)"
+                    value={stakeAmount}
+                    onChange={(e) => setStakeAmount(e.target.value)}
+                    className="bg-[#222222] border-[#333333] text-white"
+                  />
+                  <Button
+                    onClick={handleStakeLPTokens}
+                    disabled={isTransacting || !stakeAmount || parseFloat(stakeAmount) <= 0}
+                    className="w-full bg-red-9 hover:bg-red-10 text-white"
+                  >
+                    {isTransacting ? 'Processing...' : 'Deposit'}
+                  </Button>
                 </div>
-                <span className="text-white font-medium">{poolInfo.name}</span>
-              </div>
-              <div className="text-sm text-[#999999]">Available to Stake:</div>
-              <div className="text-white font-bold text-lg">
-                {poolInfo.userLPBalanceFormatted} LP Tokens
-              </div>
-              
-              {/* Show current staking position if exists */}
-              {poolInfo.stakingInfo && poolInfo.stakingInfo.stakedAmount > BigInt(0) && (
-                <div className="mt-3 pt-3 border-t border-[#444444]">
-                  <div className="text-sm text-[#999999]">Currently Staked:</div>
-                  <div className="text-orange-400 font-bold">
-                    {poolInfo.stakingInfo.stakedAmountFormatted} LP Tokens
-                  </div>
-                  {poolInfo.stakingInfo.pendingRewards > BigInt(0) && (
-                    <div className="mt-1">
-                      <div className="text-sm text-[#999999]">Pending Rewards:</div>
-                      <div className="text-green-400 font-medium">
-                        {poolInfo.stakingInfo.pendingRewardsFormatted} QUAI
-                      </div>
-                    </div>
+              )}
+
+              {activeTab === 'withdraw' && (
+                <div className="space-y-3">
+                  <Input
+                    type="number"
+                    placeholder="Amount to withdraw (LP)"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    className="bg-[#222222] border-[#333333] text-white"
+                    disabled={!poolInfo.stakingInfo?.isInGracePeriod || isTransacting}
+                  />
+                  <Button
+                    onClick={async () => { if (withdrawAmount) await withdrawLPTokens(withdrawAmount); }}
+                    disabled={
+                      isTransacting || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || !poolInfo.stakingInfo?.isInGracePeriod
+                    }
+                    className={cn('w-full', !poolInfo.stakingInfo?.isInGracePeriod ? 'bg-[#333333] text-[#999999]' : 'bg-red-9 hover:bg-red-10 text-white')}
+                  >
+                    {isTransacting ? 'Processing...' : (!poolInfo.stakingInfo?.isInGracePeriod ? 'Locked' : 'Withdraw')}
+                  </Button>
+                  {!poolInfo.stakingInfo?.isInGracePeriod && (
+                    <p className="text-xs text-yellow-400 text-center">Withdraw is only available during the grace period</p>
                   )}
                 </div>
               )}
-            </div>
 
-            {/* Staking Interface */}
-            <div className="space-y-3">
-              <Input
-                type="number"
-                placeholder="Amount to stake"
-                value={stakeAmount}
-                onChange={(e) => setStakeAmount(e.target.value)}
-                max={poolInfo.userLPBalanceFormatted}
-                className="bg-[#222222] border-[#333333] text-white"
-              />
-              
-              <div className="flex gap-2">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => setStakeAmount((parseFloat(poolInfo.userLPBalanceFormatted) * 0.25).toString())}
-                >
-                  25%
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => setStakeAmount((parseFloat(poolInfo.userLPBalanceFormatted) * 0.5).toString())}
-                >
-                  50%
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => setStakeAmount((parseFloat(poolInfo.userLPBalanceFormatted) * 0.75).toString())}
-                >
-                  75%
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => setStakeAmount(poolInfo.userLPBalanceFormatted)}
-                >
-                  Max
-                </Button>
-              </div>
-            </div>
-
-            {/* Staking Info */}
-            <div className="bg-orange-900/20 border border-orange-900/50 rounded-lg p-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="text-[#999999]">Lock Period:</div>
-                  <div className="text-white font-medium">30 days</div>
-                </div>
-                <div>
-                  <div className="text-[#999999]">Est. APR:</div>
-                  <div className="text-orange-400 font-bold">
-                    {poolInfo.poolMetrics?.apr ? 
-                      `${poolInfo.poolMetrics.apr >= 1000 ? 
-                        Math.round(poolInfo.poolMetrics.apr).toLocaleString() : 
-                        formatBalance(poolInfo.poolMetrics.apr)}%` : '0%'}
+              {activeTab === 'rewards' && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm text-[#999999]">Claimable Now</div>
+                    <div className="text-2xl font-bold text-green-400">{poolInfo.stakingInfo?.claimableRewardsFormatted || '0'} QUAI</div>
                   </div>
-                </div>
-                <div>
-                  <div className="text-[#999999]">Grace Period:</div>
-                  <div className="text-white font-medium">24 hours</div>
-                </div>
-                <div>
-                  <div className="text-[#999999]">Auto-Renewal:</div>
-                  <div className="text-green-400 font-medium">Yes</div>
-                </div>
-              </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="space-y-3">
-              {/* Stake Button */}
-              <Button 
-                className="w-full modern-button" 
-                disabled={poolInfo.userLPBalance === BigInt(0) || !stakeAmount || isTransacting}
-                onClick={handleStakeLPTokens}
-              >
-                {isTransacting ? 'Staking LP Tokens...' : 'Stake LP Tokens'}
-              </Button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-3 bg-[#0a0a0a] rounded-lg">
+                      <div className="text-xs text-[#999999]">Locked (Delayed) Rewards</div>
+                      <div className="text-lg font-bold text-yellow-400">
+                        {poolInfo.stakingInfo ?
+                          formatBalance(
+                            Number(poolInfo.stakingInfo.totalDelayedRewardsFormatted) - Number(poolInfo.stakingInfo.claimableRewardsFormatted)
+                          ) : '0'} QUAI
+                      </div>
+                    </div>
+                    <div className="p-3 bg-[#0a0a0a] rounded-lg">
+                      <div className="text-xs text-[#999999]">Next Unlock</div>
+                      <div className="text-sm font-medium text-white">
+                        {(() => {
+                          const list = poolInfo.stakingInfo?.delayedRewards || [];
+                          const next = list
+                            .filter((r) => r.timeUntilUnlock > 0)
+                            .reduce((min, r) => Math.min(min, r.timeUntilUnlock), Infinity);
+                          return Number.isFinite(next)
+                            ? new Date(Date.now() + (next as number) * 1000).toLocaleString()
+                            : '-';
+                        })()}
+                      </div>
+                    </div>
+                  </div>
 
-              {/* Management Buttons for Existing Stakes */}
-              {poolInfo.stakingInfo && poolInfo.stakingInfo.stakedAmount > BigInt(0) && (
-                <div className="flex gap-2">
-                  {/* Claim Rewards Button */}
-                  {poolInfo.stakingInfo.pendingRewards > BigInt(0) && (
-                    <Button 
-                      variant="outline"
-                      className="flex-1 border-green-600 text-green-400 hover:bg-green-600 hover:text-white"
-                      disabled={isTransacting}
-                      onClick={async () => {
-                        await claimLPRewards();
-                      }}
-                    >
-                      {isTransacting ? 'Claiming...' : 'Claim Rewards'}
-                    </Button>
-                  )}
-                  
-                  {/* Withdraw Button (only during grace period) */}
-                  {poolInfo.stakingInfo.isInGracePeriod && (
-                    <Button 
-                      variant="outline"
-                      className="flex-1 border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white"
-                      disabled={isTransacting}
-                      onClick={async () => {
-                        const amount = prompt('Enter amount to withdraw:');
-                        if (amount) await withdrawLPTokens(amount);
-                      }}
-                    >
-                      {isTransacting ? 'Withdrawing...' : 'Withdraw'}
-                    </Button>
-                  )}
-                  
-                  {/* Emergency Withdraw Button */}
-                  <Button 
-                    variant="outline"
-                    className="flex-1 border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
-                    disabled={isTransacting}
-                    onClick={async () => {
-                      if (confirm('Emergency withdraw will forfeit all rewards. Continue?')) {
-                        await emergencyWithdrawLP();
-                      }
-                    }}
+                  <Button
+                    onClick={claimLPRewards}
+                    disabled={isTransacting || !poolInfo.stakingInfo || (poolInfo.stakingInfo.claimableRewards === BigInt(0) && poolInfo.stakingInfo.pendingRewards === BigInt(0))}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
                   >
-                    {isTransacting ? 'Emergency...' : 'Emergency'}
+                    {isTransacting ? 'Processing...' : 'Claim Rewards'}
                   </Button>
                 </div>
               )}
             </div>
 
-            {/* Navigation */}
-            <div className="flex justify-between items-center pt-6 mt-6 border-t border-[#333333] gap-4">
+            {/* Footer Navigation (optional) */}
+            <div className="flex justify-between items-center pt-4 mt-2 border-t border-[#333333] gap-4">
               <Button variant="outline" onClick={() => setCurrentStep(2)} className="px-6 min-w-[120px]">
-                Previous
+                Back
               </Button>
-              <div className="flex-1"></div>
+              <div className="flex-1" />
               <Button onClick={onComplete} className="modern-button px-6 min-w-[140px]">
-                Complete
+                Done
                 <CheckCircle className="h-4 w-4 ml-2" />
               </Button>
             </div>

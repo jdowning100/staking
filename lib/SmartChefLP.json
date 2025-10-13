@@ -90,6 +90,13 @@
   },
   {
     "inputs": [],
+    "name": "REWARD_DELAY_PERIOD",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "LOCK_PERIOD",
     "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
@@ -121,6 +128,13 @@
     "name": "claimRewards",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
+    "name": "claimableRewards",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -253,6 +267,21 @@
     "type": "function"
   },
   {
+    "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
+    "name": "getDelayedRewards",
+    "outputs": [{
+      "components": [
+        {"internalType": "uint256", "name": "amount", "type": "uint256"},
+        {"internalType": "uint256", "name": "unlockTime", "type": "uint256"}
+      ],
+      "internalType": "struct SmartChefLP.RewardEntry[]",
+      "name": "",
+      "type": "tuple[]"
+    }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "stopReward",
     "outputs": [],
@@ -274,8 +303,22 @@
     "type": "function"
   },
   {
+    "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
+    "name": "timeUntilWithdrawalAvailable",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "totalStaked",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
+    "name": "totalDelayedRewards",
     "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"

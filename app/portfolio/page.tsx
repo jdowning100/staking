@@ -357,8 +357,13 @@ export default function Portfolio() {
   // Add real WQI/QUAI LP position if user has staked amount
   const realLPStaked = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
     Number(wqiQuaiLPStaking.poolInfo.stakingInfo.stakedAmountFormatted) : 0;
-  const realLPEarned = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
+  const lpClaimable = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
+    Number(wqiQuaiLPStaking.poolInfo.stakingInfo.claimableRewardsFormatted) : 0;
+  const lpDelayedTotal = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
+    Number(wqiQuaiLPStaking.poolInfo.stakingInfo.totalDelayedRewardsFormatted) : 0;
+  const lpPending = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
     Number(wqiQuaiLPStaking.poolInfo.stakingInfo.pendingRewardsFormatted) : 0;
+  const realLPEarned = lpClaimable + lpDelayedTotal + lpPending;
   const realLPApr = wqiQuaiLPStaking.poolInfo?.poolMetrics?.apr || 0;
 
   if (realLPStaked > 0 && LP_POOLS['wqi-quai']?.isActive) {
@@ -368,6 +373,9 @@ export default function Portfolio() {
       tokens: ['WQI', 'QUAI'],
       staked: realLPStaked,
       earned: realLPEarned,
+      claimableRewards: lpClaimable,
+      totalDelayedRewards: lpDelayedTotal,
+      pendingRewards: lpPending,
       apr: realLPApr,
       lockPeriod: wqiQuaiLPStaking.poolInfo?.stakingInfo?.isLocked ? 30 : null,
       endDate: wqiQuaiLPStaking.poolInfo?.stakingInfo?.lockStartTime ?
@@ -393,7 +401,7 @@ export default function Portfolio() {
   const totalStaked = allPositions.reduce((sum, pos) => sum + pos.staked, 0);
   const totalEarned = allPositions.reduce((sum, pos) => sum + pos.earned, 0);
   const activePositions = allPositions.filter(pos => pos.staked > 0);
-  const totalClaimable = activePositions.reduce((sum, pos) => sum + pos.earned, 0);
+  const totalClaimable = activePositions.reduce((sum, pos) => sum + (pos.claimableRewards ?? 0), 0);
 
   // Calculate weighted APR
   const weightedApr = activePositions.length > 0
