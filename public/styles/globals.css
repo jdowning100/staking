@@ -266,8 +266,17 @@
     height: 99999px;
     background-repeat: no-repeat;
     background-position: 0 0;
-    background-image: conic-gradient(rgba(0,0,0,0), #ef4444, #dc2626, #ef4444, rgba(0,0,0,0) 25%);
-    animation: rotate 6s linear infinite;
+    background-image: conic-gradient(
+      #f97316 0%, 
+      #ea580c 15%, 
+      #ef4444 30%, 
+      #dc2626 45%, 
+      #b91c1c 60%, 
+      #ef4444 75%, 
+      #f97316 90%, 
+      #f97316 100%
+    );
+    animation: rotate 4s linear infinite;
   }
 
   .rotating-border-wrapper:after {

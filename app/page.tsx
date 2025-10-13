@@ -182,7 +182,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
     // Pre-load particles
     const initializeParticles = () => {
       const rect = button.getBoundingClientRect();
-      const particleCount = 12;
+      const particleCount = 16; // More particles
       
       for (let i = 0; i < particleCount; i++) {
         const sizes = ['size-small', 'size-medium', 'size-large'];
@@ -192,8 +192,10 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
         particle.className = `particle ${size}`;
         particle.style.opacity = '0';
         
-        const x = Math.random() * rect.width;
-        const y = Math.random() * rect.height;
+        // More spread out positioning - use padding from edges
+        const padding = 20;
+        const x = padding + Math.random() * (rect.width - padding * 2);
+        const y = padding + Math.random() * (rect.height - padding * 2);
         
         particle.style.left = `${x}px`;
         particle.style.top = `${y}px`;
@@ -223,8 +225,8 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
       const particle = document.createElement('div');
       particle.className = `particle ${size}`;
       
-      const vx = (Math.random() - 0.5) * 8;
-      const vy = (Math.random() - 0.5) * 8;
+      const vx = (Math.random() - 0.5) * 12;
+      const vy = (Math.random() - 0.5) * 12;
       
       particle.style.left = `${x}px`;
       particle.style.top = `${y}px`;
@@ -261,8 +263,8 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
       const rect = button.getBoundingClientRect();
       
       particlesRef.current.forEach((particle, index) => {
-        // Check if this is a pre-loaded particle (id < 20) or burst particle
-        const isPreLoaded = particle.id < 20;
+        // Check if this is a pre-loaded particle (id < 25) or burst particle
+        const isPreLoaded = particle.id < 25;
         
         if (isPreLoaded && isHovered.current) {
           // Cape/swarm physics - particles trail behind mouse with lag
@@ -271,8 +273,8 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
           const distance = Math.sqrt(dx * dx + dy * dy);
           
           // Each particle has different lag/responsiveness for swarm effect
-          const lag = 0.02 + (index * 0.01); // Varying responsiveness
-          const followDistance = 20 + (index * 5); // Varying distances from mouse
+          const lag = 0.015 + (index * 0.008); // Slightly reduced responsiveness for more spread
+          const followDistance = 30 + (index * 8); // Larger follow distances for more spread
           
           // Only apply force if mouse is moving or particle is too far
           if (isMouseMoving.current || distance > followDistance) {
@@ -280,30 +282,38 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
             particle.vx += dx * lag;
             particle.vy += dy * lag;
             
-            // Add some turbulence for natural swarm movement
+            // Add more turbulence for natural swarm movement and spread
             if (isMouseMoving.current) {
-              particle.vx += (Math.random() - 0.5) * 0.5;
-              particle.vy += (Math.random() - 0.5) * 0.5;
+              particle.vx += (Math.random() - 0.5) * 0.8;
+              particle.vy += (Math.random() - 0.5) * 0.8;
             }
           }
           
           // Swarm cohesion - particles slightly attract to nearby particles
           particlesRef.current.forEach((otherParticle, otherIndex) => {
-            if (otherIndex !== index && otherParticle.id < 20) {
+            if (otherIndex !== index && otherParticle.id < 25) {
               const pdx = otherParticle.x - particle.x;
               const pdy = otherParticle.y - particle.y;
               const pDistance = Math.sqrt(pdx * pdx + pdy * pdy);
               
-              if (pDistance > 0 && pDistance < 30) {
-                const cohesionForce = 0.005;
+              // Increased cohesion distance but reduced force for more spread
+              if (pDistance > 0 && pDistance < 50) {
+                const cohesionForce = 0.003;
                 particle.vx += (pdx / pDistance) * cohesionForce;
                 particle.vy += (pdy / pDistance) * cohesionForce;
+              }
+              
+              // Add separation force to prevent clustering
+              if (pDistance > 0 && pDistance < 25) {
+                const separationForce = 0.01;
+                particle.vx -= (pdx / pDistance) * separationForce;
+                particle.vy -= (pdy / pDistance) * separationForce;
               }
             }
           });
           
           // Apply drag/friction based on whether mouse is moving
-          const friction = isMouseMoving.current ? 0.92 : 0.88;
+          const friction = isMouseMoving.current ? 0.90 : 0.85;
           particle.vx *= friction;
           particle.vy *= friction;
         } else {
@@ -362,7 +372,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
       isHovered.current = true;
       // Show pre-loaded particles
       particlesRef.current.forEach(particle => {
-        if (particle.id < 20) { // Pre-loaded particles
+        if (particle.id < 25) { // Pre-loaded particles
           particle.element.style.opacity = '1';
         }
       });
@@ -376,13 +386,13 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
       }
       // Hide pre-loaded particles but keep them
       particlesRef.current.forEach(particle => {
-        if (particle.id < 20) { // Pre-loaded particles
+        if (particle.id < 25) { // Pre-loaded particles
           particle.element.style.opacity = '0';
         }
       });
       // Remove only burst particles
       particlesRef.current = particlesRef.current.filter(particle => {
-        if (particle.id >= 20) { // Burst particles
+        if (particle.id >= 25) { // Burst particles
           if (particle.element.parentNode) {
             particle.element.parentNode.removeChild(particle.element);
           }
@@ -398,13 +408,13 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
       const y = e.clientY - rect.top;
       
       // Create burst effect
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 16; i++) {
         setTimeout(() => {
           createBurstParticle(
-            x + (Math.random() - 0.5) * 10,
-            y + (Math.random() - 0.5) * 10
+            x + (Math.random() - 0.5) * 20,
+            y + (Math.random() - 0.5) * 20
           );
-        }, i * 15);
+        }, i * 12);
       }
       
       // Disperse existing particles
