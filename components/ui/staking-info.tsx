@@ -71,7 +71,7 @@ export function StakingInfo({
 
   if (isLoading) {
     return (
-      <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
+      <Card className="modern-card overflow-hidden">
         <CardHeader className="text-center">
           <CardTitle className="text-xl text-white">Loading Staking Information</CardTitle>
           <CardDescription className="text-[#999999]">
@@ -87,7 +87,7 @@ export function StakingInfo({
 
   return (
     <div className="space-y-4">
-      <Card className="bg-[#1a1a1a] border border-[#333333] rounded-xl overflow-hidden shadow-none">
+      <Card className="modern-card overflow-hidden">
         <CardHeader>
           <CardTitle className="text-xl text-white text-center">
             Staking Pool

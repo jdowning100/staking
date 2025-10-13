@@ -6,7 +6,7 @@ import Link from 'next/link';
 
 export default function HowToStake() {
   return (
-    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
+    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
       <div className="w-full max-w-4xl mx-auto space-y-6">
         <Card className="bg-[#1a1a1a] border border-[#333333]">
           <CardHeader>

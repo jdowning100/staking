@@ -176,9 +176,9 @@ export default function Portfolio() {
 
   if (!account?.addr) {
     return (
-      <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
+      <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
         <div className="w-full max-w-4xl mx-auto">
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardContent className="p-12 text-center">
               <Coins className="h-16 w-16 text-[#666666] mx-auto mb-4" />
               <h1 className="text-2xl font-bold text-white mb-2">Portfolio</h1>
@@ -198,11 +198,11 @@ export default function Portfolio() {
   // Show loading state while staking data is loading
   if (staking.isLoading) {
     return (
-      <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
+      <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
         <div className="w-full max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold text-white mb-8">Your Portfolio</h1>
           
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardContent className="p-12 text-center">
               <Loader2 className="h-16 w-16 text-red-600 mx-auto mb-4 animate-spin" />
               <h2 className="text-xl font-bold text-white mb-2">Loading Portfolio</h2>
@@ -218,11 +218,11 @@ export default function Portfolio() {
 
   if (activePositions.length === 0) {
     return (
-      <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
+      <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
         <div className="w-full max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold text-white mb-8">Your Portfolio</h1>
           
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardContent className="p-12 text-center">
               <TrendingUp className="h-16 w-16 text-[#666666] mx-auto mb-4" />
               <h2 className="text-xl font-bold text-white mb-2">No Active Positions</h2>
@@ -242,13 +242,13 @@ export default function Portfolio() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
+    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
       <div className="w-full max-w-6xl mx-auto space-y-8">
         <h1 className="text-3xl font-bold text-white">Your Portfolio</h1>
 
         {/* Portfolio Overview */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardContent className="p-4 text-center">
               <div className="text-xl font-bold text-white">{formatNumber(totalStaked)}</div>
               <div className="text-xs text-[#999999]">Total Staked</div>
@@ -256,7 +256,7 @@ export default function Portfolio() {
             </CardContent>
           </Card>
           
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardContent className="p-4 text-center">
               <div className="text-xl font-bold text-orange-400">{totalEarned.toFixed(2)}</div>
               <div className="text-xs text-[#999999]">Total Earned</div>
@@ -264,7 +264,7 @@ export default function Portfolio() {
             </CardContent>
           </Card>
           
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardContent className="p-4 text-center">
               <div className="text-xl font-bold text-red-400">{weightedApr.toFixed(1)}%</div>
               <div className="text-xs text-[#999999]">Weighted APR</div>
@@ -272,7 +272,7 @@ export default function Portfolio() {
             </CardContent>
           </Card>
           
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardContent className="p-4 text-center">
               <div className="text-xl font-bold text-orange-500">{activePositions.length}</div>
               <div className="text-xs text-[#999999]">Active Positions</div>
@@ -283,7 +283,7 @@ export default function Portfolio() {
 
         {/* Claimable Rewards - Display only */}
         {totalClaimable > 0 && (
-          <Card className="bg-gradient-to-r from-red-900/20 to-orange-800/10 border border-red-700/30">
+          <Card className="modern-card bg-gradient-to-r from-red-900/20 to-orange-800/10 border-red-700/30">
             <CardContent className="p-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-red-600/20 rounded-lg">
@@ -308,7 +308,7 @@ export default function Portfolio() {
               const daysRemaining = position.endDate ? getDaysRemaining(position.endDate) : null;
               
               return (
-                <Card key={index} className="bg-[#1a1a1a] border border-[#333333] hover:border-[#444444] transition-colors">
+                <Card key={index} className="modern-card">
                   <CardContent className="p-6">
                     {/* Header Row */}
                     <div className="flex items-center justify-between mb-4">
@@ -405,7 +405,7 @@ export default function Portfolio() {
         </div>
 
         {/* Quick Actions - More compact */}
-        <Card className="bg-[#1a1a1a] border border-[#333333]">
+        <Card className="modern-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg text-white">Quick Actions</CardTitle>
           </CardHeader>

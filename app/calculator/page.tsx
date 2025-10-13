@@ -203,9 +203,9 @@ const SOAPDistributionModel = () => {
   }));
 
   return (
-    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
+    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
       <div className="w-full max-w-7xl mx-auto space-y-6">
-        <Card className="bg-[#1a1a1a] border border-[#333333]">
+        <Card className="modern-card">
           <CardHeader>
             <CardTitle className="text-3xl font-bold text-white">SOAP Buyback Distribution Model</CardTitle>
             <CardDescription className="text-[#999999]">
@@ -239,7 +239,7 @@ const SOAPDistributionModel = () => {
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardHeader>
               <CardTitle className="text-xl font-bold text-white">Buyback Parameters</CardTitle>
             </CardHeader>
@@ -268,9 +268,9 @@ const SOAPDistributionModel = () => {
                   max="100"
                   value={inputs.burnPercentage}
                   onChange={(e) => setInputs({...inputs, burnPercentage: Number(e.target.value)})}
-                  className="w-full h-2 bg-[#333333] rounded-lg appearance-none cursor-pointer"
+                  className="w-full h-2 bg-[#333333] rounded-lg appearance-none cursor-pointer custom-slider"
                   style={{
-                    background: `linear-gradient(to right, #ef4444 0%, #ef4444 ${inputs.burnPercentage}%, #10b981 ${inputs.burnPercentage}%, #10b981 100%)`
+                    background: `linear-gradient(to right, #E22901 0%, #E22901 ${inputs.burnPercentage}%, #16a34a ${inputs.burnPercentage}%, #16a34a 100%)`
                   }}
                 />
                 <div className="flex justify-between text-xs text-[#666666] mt-1">
@@ -307,7 +307,7 @@ const SOAPDistributionModel = () => {
             </CardContent>
           </Card>
 
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardHeader>
               <CardTitle className="text-xl font-bold text-white">Buyback Allocation</CardTitle>
             </CardHeader>
@@ -345,7 +345,7 @@ const SOAPDistributionModel = () => {
           </Card>
         </div>
 
-        <Card className="bg-[#1a1a1a] border border-[#333333]">
+        <Card className="modern-card">
           <CardHeader>
             <CardTitle className="text-xl font-bold text-white">Pool Configuration</CardTitle>
           </CardHeader>
@@ -353,7 +353,7 @@ const SOAPDistributionModel = () => {
             {Object.entries(pools).map(([key, pool]) => {
               const poolData = metrics.poolMetrics.find(p => p.key === key);
               return (
-                <div key={key} className="border border-[#333333] rounded-lg p-4 bg-[#0a0a0a]">
+                <div key={key} className="border border-[#333333] rounded-xl p-6 bg-gradient-to-br from-[#0a0a0a] to-[#111111] hover:border-red-900/50 transition-all duration-200">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <TokenLogos tokens={pool.tokens} size={32} />
@@ -433,7 +433,7 @@ const SOAPDistributionModel = () => {
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardHeader>
               <CardTitle className="text-xl font-bold text-white">APR Comparison</CardTitle>
             </CardHeader>
@@ -472,7 +472,7 @@ const SOAPDistributionModel = () => {
             </CardContent>
           </Card>
 
-          <Card className="bg-[#1a1a1a] border border-[#333333]">
+          <Card className="modern-card">
             <CardHeader>
               <CardTitle className="text-xl font-bold text-white">TVL Distribution</CardTitle>
             </CardHeader>
@@ -512,7 +512,7 @@ const SOAPDistributionModel = () => {
           </Card>
         </div>
 
-        <Card className="bg-[#1a1a1a] border border-[#333333]">
+        <Card className="modern-card">
           <CardHeader>
             <CardTitle className="text-xl font-bold text-white">Detailed Breakdown</CardTitle>
           </CardHeader>

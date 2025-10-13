@@ -104,19 +104,6 @@ const stakingPools = [
     isActive: true,
   },
   {
-    id: 'quai-usdc',
-    name: 'QUAI/USDC LP',
-    tokens: ['QUAI', 'USDC'],
-    baseApr: 8.2,
-    lockPeriods: [
-      { days: 30, multiplier: 1.0, apr: 8.2 },
-      { days: 60, multiplier: 1.3, apr: 10.7 },
-      { days: 90, multiplier: 1.6, apr: 13.1 }
-    ],
-    totalStaked: 1800000,
-    isActive: true,
-  },
-  {
     id: 'wqi-quai',
     name: 'WQI/QUAI LP',
     tokens: ['WQI', 'QUAI'],
@@ -127,6 +114,19 @@ const stakingPools = [
       { days: 90, multiplier: 1.7, apr: 11.6 }
     ],
     totalStaked: 1200000,
+    isActive: true,
+  },
+  {
+    id: 'quai-usdc',
+    name: 'QUAI/USDC LP',
+    tokens: ['QUAI', 'USDC'],
+    baseApr: 8.2,
+    lockPeriods: [
+      { days: 30, multiplier: 1.0, apr: 8.2 },
+      { days: 60, multiplier: 1.3, apr: 10.7 },
+      { days: 90, multiplier: 1.6, apr: 13.1 }
+    ],
+    totalStaked: 1800000,
     isActive: true,
   },
   {
@@ -174,7 +174,7 @@ const PoolCard = ({ pool, stakingData }: { pool: typeof stakingPools[0], staking
   const hasStake = userStake.staked > 0;
 
   return (
-    <Card className="bg-[#1a1a1a] border border-[#333333] hover:border-[#444444] transition-colors h-fit">
+    <Card className="modern-card h-fit group">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -275,7 +275,7 @@ const PoolCard = ({ pool, stakingData }: { pool: typeof stakingPools[0], staking
         {/* Stake Button */}
         <div className="pt-4">
           <Link href={`/stake/${pool.id}`}>
-            <Button className="w-full bg-red-600 hover:bg-red-700 text-white font-medium">
+            <Button className="w-full modern-button text-white font-medium">
               {hasStake ? 'Manage' : 'Stake'}
             </Button>
           </Link>
@@ -365,8 +365,8 @@ export default function Home() {
   const staking = useStaking();
 
   return (
-    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
-      <div className="w-full max-w-4xl mx-auto">
+    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
+      <div className="w-full max-w-5xl mx-auto">
         
 
         {/* Staking Pools Grid - 2x2 */}
@@ -382,14 +382,22 @@ export default function Home() {
 
         {/* Connection Prompt */}
         {!account?.addr && (
-          <Card className="bg-[#1a1a1a] border border-[#333333] mt-8">
-            <CardContent className="p-6 text-center">
-              <p className="text-[#999999] mb-4">
-                Connect your Pelagus wallet to start staking and earning rewards
-              </p>
-              <Button className="bg-red-600 hover:bg-red-700 text-white">
-                Connect Wallet
-              </Button>
+          <Card className="modern-card mt-8">
+            <CardContent className="p-8 text-center">
+              <div className="flex flex-col items-center space-y-4">
+                <div className="p-3 bg-red-600/10 rounded-2xl">
+                  <Coins className="h-8 w-8 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Connect Your Wallet</h3>
+                  <p className="text-[#999999] text-sm">
+                    Connect your Pelagus wallet to start staking and earning rewards
+                  </p>
+                </div>
+                <Button className="modern-button text-white px-8 py-2">
+                  Connect Wallet
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

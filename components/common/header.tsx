@@ -31,7 +31,7 @@ export default function Header() {
   ];
 
   return (
-    <div className={cn('fixed top-0 left-0 bg-gray-1 w-full z-50')}>
+    <div className={cn('fixed top-0 left-0 w-full z-50 glass')}>
       <div
         className={cn('lg:px-8 md:pr-8 px-4 flex flex-col', {
           'w-full ': true,

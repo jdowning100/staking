@@ -134,7 +134,7 @@ export default function StakePage() {
 
   if (!pool) {
     return (
-      <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
+      <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">Pool Not Found</h1>
           <Link href="/">
@@ -159,7 +159,7 @@ export default function StakePage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4 bg-background">
+    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
       <div className="w-full max-w-2xl mx-auto">
         
         {/* Back Button */}
