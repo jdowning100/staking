@@ -4,11 +4,17 @@ export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.quai.netw
 // Staking Contract Constants
 export const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS || '0x006Ac8e729d91CC84De81Df5BdB9660Fc5150309';
 
-// Staking Parameters
-export const LOCK_PERIOD = 30 * 24 * 60 * 60; // 30 days in seconds
-export const GRACE_PERIOD = 24 * 60 * 60; // 24 hours in seconds
+// Staking Parameters (updated for new contract mechanics)
+export const LOCK_PERIOD = 3600; // 1 hour in seconds (for testing)
+export const REWARD_DELAY_PERIOD = 3600; // 1 hour reward delay (for testing)
+export const EXIT_PERIOD = 3600; // 1 hour exit period (for testing)
+export const GRACE_PERIOD = 24 * 60 * 60; // 24 hours in seconds (legacy - not used in new contracts)
 export const BLOCKS_PER_SECOND = 0.2; // 5 second block time = 0.2 blocks per second
 export const SECONDS_PER_BLOCK = 5; // 5 seconds per block on Quai
+
+// Contract Parameters
+export const REWARD_PER_BLOCK = '0.001'; // 0.001 QUAI per block
+export const POOL_LIMIT_PER_USER = '1000.0'; // 1000 QUAI max per user
 
 // UI Constants
 export const APP_TITLE = process.env.NEXT_PUBLIC_APP_TITLE || 'QUAI Staking';
@@ -55,7 +61,7 @@ export const LP_POOLS = {
     // Liquidity pool pair contract
     pair: LP_TOKEN_ADDRESSES['WQI-QUAI'],
     // LP Staking contract
-    stakingContract: '0x0022c1c3a93CEDDF4EE55910a879E8238F4184eD'
+    stakingContract: '0x0076Bd5521A1FC3801B9741d77eF6eCBD8459Cfd'
   },
   'quai-usdc': {
     id: 'quai-usdc',

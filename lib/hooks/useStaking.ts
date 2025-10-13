@@ -1,8 +1,9 @@
 import { Contract, JsonRpcProvider, Shard, formatQuai, parseQuai } from 'quais';
 import { useContext, useState, useEffect, useCallback } from 'react';
 import { StateContext } from '@/store';
-import SmartChefNativeABI from '@/lib/SmartChefNative.json';
-import { RPC_URL, STAKING_CONTRACT_ADDRESS, LOCK_PERIOD, GRACE_PERIOD, SECONDS_PER_BLOCK } from '@/lib/config';
+import SmartChefNativeArtifact from '@/lib/SmartChefNative.json';
+const SmartChefNativeABI = SmartChefNativeArtifact.abi;
+import { RPC_URL, STAKING_CONTRACT_ADDRESS, LOCK_PERIOD, REWARD_DELAY_PERIOD, EXIT_PERIOD, GRACE_PERIOD, SECONDS_PER_BLOCK } from '@/lib/config';
 
 // Re-export formatQuai for use in other components
 export { formatQuai, parseQuai };
@@ -13,20 +14,36 @@ export function formatBalance(value: string | number): string {
   return parseFloat(num.toFixed(3)).toString();
 }
 
+export interface DelayedReward {
+  amount: bigint;
+  unlockTime: number;
+  amountFormatted: string;
+  timeUntilUnlock: number;
+}
+
 export interface UserStakingInfo {
   stakedAmount: bigint;
   stakedAmountFormatted: string;
   pendingRewards: bigint;
   pendingRewardsFormatted: string;
+  claimableRewards: bigint;
+  claimableRewardsFormatted: string;
+  totalDelayedRewards: bigint;
+  totalDelayedRewardsFormatted: string;
+  delayedRewards: DelayedReward[];
   lockStartTime: number;
-  isLocked: boolean;
-  isInGracePeriod: boolean;
-  canWithdraw: boolean;
-  timeUntilUnlock: number; // in seconds
-  timeLeftInGracePeriod: number; // in seconds
-  currentCycle: number;
   lockEndTime: number;
-  gracePeriodEndTime: number;
+  isLocked: boolean;
+  isInExitPeriod: boolean;
+  canRequestWithdraw: boolean;
+  canExecuteWithdraw: boolean;
+  withdrawRequestTime: number;
+  withdrawalAmount: bigint;
+  withdrawalAmountFormatted: string;
+  withdrawalAvailableTime: number;
+  timeUntilUnlock: number; // in seconds
+  timeUntilWithdrawalAvailable: number; // in seconds
+  userStatus: string;
 }
 
 export interface ContractInfo {
@@ -173,36 +190,69 @@ export function useStaking() {
       let lockStartTime = 0;
       let pendingRewards = BigInt(0);
       let isLocked = false;
-      let isInGracePeriod = false;
       let timeUntilUnlock = 0;
-      let timeLeftInGracePeriod = 0;
-      let currentCycle = 0;
+      
+      // Initialize extended user info with defaults
+      let extendedInfo = {
+        lockEndTime: 0,
+        isInExitPeriod: false,
+        canRequestWithdraw: false,
+        canExecuteWithdraw: false,
+        withdrawRequestTime: 0,
+        withdrawalAmount: BigInt(0),
+        withdrawalAvailableTime: 0,
+        timeUntilWithdrawalAvailable: 0,
+        userStatus: 'No stake',
+        claimableRewards: BigInt(0),
+        totalDelayedRewards: BigInt(0),
+        delayedRewards: [] as DelayedReward[]
+      };
 
       try {
-        // Try to get user info - might fail or return empty for new users
-        const user = await stakingContract.userInfo(account.addr);
-
-        // Check if user has any stake
-        if (user && user.amount !== undefined) {
-          stakedAmount = user.amount || BigInt(0);
-          lockStartTime = user.lockStartTime ? Number(user.lockStartTime) : 0;
-
-          // Only query lock-related info if user has staked
+        // Get comprehensive user info from new contract
+        const userInfoResult = await stakingContract.getUserInfo(account.addr);
+        
+        if (userInfoResult) {
+          stakedAmount = userInfoResult.stakedAmount || BigInt(0);
+          lockStartTime = userInfoResult.lockStartTime ? Number(userInfoResult.lockStartTime) : 0;
+          extendedInfo.lockEndTime = userInfoResult.lockEndTime ? Number(userInfoResult.lockEndTime) : 0;
+          extendedInfo.withdrawRequestTime = userInfoResult.withdrawRequestTime ? Number(userInfoResult.withdrawRequestTime) : 0;
+          extendedInfo.withdrawalAmount = userInfoResult.withdrawalAmount || BigInt(0);
+          extendedInfo.withdrawalAvailableTime = userInfoResult.withdrawalAvailableTime ? Number(userInfoResult.withdrawalAvailableTime) : 0;
+          isLocked = userInfoResult.isLocked || false;
+          extendedInfo.isInExitPeriod = userInfoResult.inExitPeriod || false;
+          extendedInfo.canRequestWithdraw = userInfoResult.canRequestWithdraw || false;
+          extendedInfo.canExecuteWithdraw = userInfoResult.canExecuteWithdraw || false;
+          
+          // Only get additional info if user has staked
           if (stakedAmount > BigInt(0)) {
             try {
-              pendingRewards = await stakingContract.pendingReward(account.addr);
-            } catch (e) {
-              console.warn('Failed to get pending rewards:', e);
-            }
-
-            try {
-              isLocked = await stakingContract.isLocked(account.addr);
-              isInGracePeriod = await stakingContract.isInGracePeriod(account.addr);
+              // Get time-related info
               timeUntilUnlock = Number(await stakingContract.timeUntilUnlock(account.addr));
-              timeLeftInGracePeriod = Number(await stakingContract.timeLeftInGracePeriod(account.addr));
-              currentCycle = Number(await stakingContract.getCurrentCycle(account.addr));
+              extendedInfo.timeUntilWithdrawalAvailable = Number(await stakingContract.timeUntilWithdrawalAvailable(account.addr));
+              extendedInfo.userStatus = await stakingContract.getUserStatus(account.addr);
+              
+              // Get reward information
+              pendingRewards = await stakingContract.pendingReward(account.addr);
+              extendedInfo.claimableRewards = await stakingContract.claimableRewards(account.addr);
+              extendedInfo.totalDelayedRewards = await stakingContract.totalDelayedRewards(account.addr);
+              const delayedRewardsRaw = await stakingContract.getDelayedRewards(account.addr);
+              
+              // Process delayed rewards
+              extendedInfo.delayedRewards = delayedRewardsRaw.map((reward: any) => {
+                const amount = reward.amount || BigInt(0);
+                const unlockTime = Number(reward.unlockTime) || 0;
+                const timeUntilUnlock = Math.max(0, unlockTime - Math.floor(Date.now() / 1000));
+                
+                return {
+                  amount,
+                  unlockTime,
+                  amountFormatted: formatBalance(formatQuai(amount)),
+                  timeUntilUnlock
+                };
+              });
             } catch (e) {
-              console.warn('Failed to get lock status:', e);
+              console.warn('Failed to get extended user info:', e);
             }
           }
         }
@@ -211,29 +261,7 @@ export function useStaking() {
         console.log('User has not staked yet or contract call failed:', error);
       }
 
-      // Get lock info for detailed timing (only if user has staked)
-      let lockInfo = null;
-      if (stakedAmount > BigInt(0) && lockStartTime > 0) {
-        try {
-          lockInfo = await stakingContract.getLockInfo(account.addr);
-        } catch (e) {
-          console.warn('Failed to get lock info:', e);
-        }
-      }
-
-      // Calculate lock and grace period end times
-      let lockEndTime = 0;
-      let gracePeriodEndTime = 0;
-
-      if (lockStartTime > 0) {
-        const timeSinceStart = Math.floor(Date.now() / 1000) - lockStartTime;
-        const fullCycleLength = LOCK_PERIOD + GRACE_PERIOD;
-        const currentCycleNumber = Math.floor(timeSinceStart / fullCycleLength);
-        const currentCycleStart = lockStartTime + (currentCycleNumber * fullCycleLength);
-
-        lockEndTime = currentCycleStart + LOCK_PERIOD;
-        gracePeriodEndTime = currentCycleStart + fullCycleLength;
-      }
+      // Extended info is already populated above
 
       // Get contract info with error handling
       let totalStaked = BigInt(0);
@@ -283,15 +311,24 @@ export function useStaking() {
         stakedAmountFormatted: formatBalance(formatQuai(stakedAmount)),
         pendingRewards,
         pendingRewardsFormatted: formatBalance(formatQuai(pendingRewards)),
+        claimableRewards: extendedInfo.claimableRewards,
+        claimableRewardsFormatted: formatBalance(formatQuai(extendedInfo.claimableRewards)),
+        totalDelayedRewards: extendedInfo.totalDelayedRewards,
+        totalDelayedRewardsFormatted: formatBalance(formatQuai(extendedInfo.totalDelayedRewards)),
+        delayedRewards: extendedInfo.delayedRewards,
         lockStartTime,
+        lockEndTime: extendedInfo.lockEndTime,
         isLocked,
-        isInGracePeriod,
-        canWithdraw: isInGracePeriod && !isLocked,
+        isInExitPeriod: extendedInfo.isInExitPeriod,
+        canRequestWithdraw: extendedInfo.canRequestWithdraw,
+        canExecuteWithdraw: extendedInfo.canExecuteWithdraw,
+        withdrawRequestTime: extendedInfo.withdrawRequestTime,
+        withdrawalAmount: extendedInfo.withdrawalAmount,
+        withdrawalAmountFormatted: formatBalance(formatQuai(extendedInfo.withdrawalAmount)),
+        withdrawalAvailableTime: extendedInfo.withdrawalAvailableTime,
         timeUntilUnlock,
-        timeLeftInGracePeriod,
-        currentCycle,
-        lockEndTime,
-        gracePeriodEndTime,
+        timeUntilWithdrawalAvailable: extendedInfo.timeUntilWithdrawalAvailable,
+        userStatus: extendedInfo.userStatus,
       });
 
       // Set contract info
@@ -375,8 +412,8 @@ export function useStaking() {
     }
   }, [account, web3Provider, contractInfo, userInfo, loadStakingInfo]);
 
-  // Withdraw tokens
-  const withdraw = useCallback(async (amount: string) => {
+  // Request withdrawal (starts exit period)
+  const requestWithdraw = useCallback(async (amount: string) => {
     if (!account?.addr || !web3Provider) {
       setError('Please connect your wallet');
       return;
@@ -387,8 +424,8 @@ export function useStaking() {
       return;
     }
 
-    if (!userInfo.canWithdraw) {
-      setError('Cannot withdraw during lock period. Wait for grace period.');
+    if (!userInfo.canRequestWithdraw) {
+      setError('Cannot request withdrawal at this time.');
       return;
     }
 
@@ -412,8 +449,8 @@ export function useStaking() {
         throw new Error('Insufficient staked amount');
       }
 
-      // Send withdraw transaction
-      const tx = await stakingContract.withdraw(withdrawAmount, { gasLimit: 500000 });
+      // Send request withdraw transaction
+      const tx = await stakingContract.requestWithdraw(withdrawAmount, { gasLimit: 500000 });
       setTransactionHash(tx.hash);
 
       // Wait for confirmation
@@ -422,21 +459,100 @@ export function useStaking() {
       // Reload staking info
       await loadStakingInfo();
     } catch (error: any) {
-      console.error('Withdraw failed:', error);
-      setError(error.message || 'Withdraw failed. Please try again.');
+      console.error('Request withdraw failed:', error);
+      setError(error.message || 'Request withdraw failed. Please try again.');
     } finally {
       setIsTransacting(false);
     }
   }, [account, web3Provider, userInfo, loadStakingInfo]);
 
-  // Claim rewards
+  // Execute withdrawal (after exit period)
+  const executeWithdraw = useCallback(async () => {
+    if (!account?.addr || !web3Provider) {
+      setError('Please connect your wallet');
+      return;
+    }
+
+    if (!userInfo) {
+      setError('No staking information available');
+      return;
+    }
+
+    if (!userInfo.canExecuteWithdraw) {
+      setError('Exit period not finished yet.');
+      return;
+    }
+
+    setIsTransacting(true);
+    setError(null);
+    setTransactionHash(null);
+
+    try {
+      const signer = await web3Provider.getSigner();
+      const stakingContract = new Contract(STAKING_CONTRACT_ADDRESS, SmartChefNativeABI, signer);
+
+      // Send execute withdraw transaction
+      const tx = await stakingContract.executeWithdraw({ gasLimit: 500000 });
+      setTransactionHash(tx.hash);
+
+      // Wait for confirmation
+      await tx.wait();
+
+      // Reload staking info
+      await loadStakingInfo();
+    } catch (error: any) {
+      console.error('Execute withdraw failed:', error);
+      setError(error.message || 'Execute withdraw failed. Please try again.');
+    } finally {
+      setIsTransacting(false);
+    }
+  }, [account, web3Provider, userInfo, loadStakingInfo]);
+
+  // Cancel withdrawal request
+  const cancelWithdraw = useCallback(async () => {
+    if (!account?.addr || !web3Provider) {
+      setError('Please connect your wallet');
+      return;
+    }
+
+    if (!userInfo || !userInfo.isInExitPeriod) {
+      setError('No withdrawal request to cancel');
+      return;
+    }
+
+    setIsTransacting(true);
+    setError(null);
+    setTransactionHash(null);
+
+    try {
+      const signer = await web3Provider.getSigner();
+      const stakingContract = new Contract(STAKING_CONTRACT_ADDRESS, SmartChefNativeABI, signer);
+
+      // Send cancel withdraw transaction
+      const tx = await stakingContract.cancelWithdraw({ gasLimit: 300000 });
+      setTransactionHash(tx.hash);
+
+      // Wait for confirmation
+      await tx.wait();
+
+      // Reload staking info
+      await loadStakingInfo();
+    } catch (error: any) {
+      console.error('Cancel withdraw failed:', error);
+      setError(error.message || 'Cancel withdraw failed. Please try again.');
+    } finally {
+      setIsTransacting(false);
+    }
+  }, [account, web3Provider, userInfo, loadStakingInfo]);
+
+  // Claim rewards (now claims claimable delayed rewards)
   const claimRewards = useCallback(async () => {
     if (!account?.addr || !web3Provider) {
       setError('Please connect your wallet');
       return;
     }
 
-    if (!userInfo || userInfo.pendingRewards === BigInt(0)) {
+    if (!userInfo || (userInfo.claimableRewards === BigInt(0) && userInfo.pendingRewards === BigInt(0))) {
       setError('No rewards to claim');
       return;
     }
@@ -449,7 +565,7 @@ export function useStaking() {
       const signer = await web3Provider.getSigner();
       const stakingContract = new Contract(STAKING_CONTRACT_ADDRESS, SmartChefNativeABI, signer);
 
-      // Send claim transaction
+      // Send claim transaction (this will add pending rewards to delayed and claim claimable)
       const tx = await stakingContract.claimRewards({ gasLimit: 500000 });
       setTransactionHash(tx.hash);
 
@@ -466,48 +582,7 @@ export function useStaking() {
     }
   }, [account, web3Provider, userInfo, loadStakingInfo]);
 
-  // Emergency withdraw (forfeits rewards)
-  const emergencyWithdraw = useCallback(async () => {
-    if (!account?.addr || !web3Provider) {
-      setError('Please connect your wallet');
-      return;
-    }
-
-    if (!userInfo || userInfo.stakedAmount === BigInt(0)) {
-      setError('No tokens staked');
-      return;
-    }
-
-    // Confirm with user
-    const confirmed = window.confirm(
-      'Emergency withdraw will forfeit all pending rewards. Are you sure you want to continue?'
-    );
-    if (!confirmed) return;
-
-    setIsTransacting(true);
-    setError(null);
-    setTransactionHash(null);
-
-    try {
-      const signer = await web3Provider.getSigner();
-      const stakingContract = new Contract(STAKING_CONTRACT_ADDRESS, SmartChefNativeABI, signer);
-
-      // Send emergency withdraw transaction
-      const tx = await stakingContract.emergencyWithdraw({ gasLimit: 500000 });
-      setTransactionHash(tx.hash);
-
-      // Wait for confirmation
-      await tx.wait();
-
-      // Reload staking info
-      await loadStakingInfo();
-    } catch (error: any) {
-      console.error('Emergency withdraw failed:', error);
-      setError(error.message || 'Emergency withdraw failed. Please try again.');
-    } finally {
-      setIsTransacting(false);
-    }
-  }, [account, web3Provider, userInfo, loadStakingInfo]);
+  // Note: Emergency withdraw has been removed from the new contract
 
   // Refresh only pending rewards (lightweight update)
   const refreshRewards = useCallback(async () => {
@@ -563,9 +638,10 @@ export function useStaking() {
     error,
     transactionHash,
     deposit,
-    withdraw,
+    requestWithdraw,
+    executeWithdraw,
+    cancelWithdraw,
     claimRewards,
-    emergencyWithdraw,
     refreshData,
     refreshRewards,
   };

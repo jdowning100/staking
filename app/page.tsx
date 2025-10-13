@@ -1,7 +1,7 @@
 'use client';
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { StateContext } from '@/store';
-import { APP_TITLE } from '@/lib/config';
+import { APP_TITLE, LOCK_PERIOD, REWARD_DELAY_PERIOD, EXIT_PERIOD } from '@/lib/config';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -571,9 +571,9 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
         {/* Lock Period Selector or Lock Info */}
         {isNativeQuai || isWQIQuaiLP ? (
           <div>
-            <div className="text-sm font-semibold text-white mb-1">Lock Mechanism: 30-Day Lock Cycles</div>
+            <div className="text-sm font-semibold text-white mb-1">Lock & Delay Mechanism</div>
             <div className="text-xs text-[#999999]">
-              30 days locked + 24hr grace period for withdrawal
+              {Math.floor(LOCK_PERIOD/3600)}h lock • {Math.floor(REWARD_DELAY_PERIOD/3600)}h reward delay • {Math.floor(EXIT_PERIOD/3600)}h exit window
             </div>
           </div>
         ) : (
@@ -712,20 +712,24 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
               {isNativeQuai || isWQIQuaiLP ? (
                 <>
                   <div className="flex justify-between">
-                    <span className="text-[#999999]">Lock Duration:</span>
-                    <span className="text-white">30 days per cycle</span>
+                    <span className="text-[#999999]">Lock Period:</span>
+                    <span className="text-white">{Math.floor(LOCK_PERIOD/3600)} hour (testing)</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#999999]">Grace Period:</span>
-                    <span className="text-white">24 hours</span>
+                    <span className="text-[#999999]">Reward Delay:</span>
+                    <span className="text-yellow-400">{Math.floor(REWARD_DELAY_PERIOD/3600)} hour delay before claim</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#999999]">Early Withdrawal:</span>
-                    <span className="text-red-400">Forfeit rewards</span>
+                    <span className="text-[#999999]">Exit Window:</span>
+                    <span className="text-orange-400">{Math.floor(EXIT_PERIOD/3600)} hour wait to complete withdrawal</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#999999]">Auto-renewal:</span>
-                    <span className="text-green-400">Yes</span>
+                    <span className="text-[#999999]">Early Exit Penalty:</span>
+                    <span className="text-red-400">Forfeit all pending rewards</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#999999]">During Exit:</span>
+                    <span className="text-orange-400">No rewards earned</span>
                   </div>
                 </>
               ) : (

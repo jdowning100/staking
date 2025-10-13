@@ -323,7 +323,10 @@ export default function Portfolio() {
 
   // Calculate totals - use real data for native QUAI, mock for others
   const realQuaiStaked = staking.userInfo ? Number(staking.userInfo.stakedAmountFormatted) : 0;
-  const realQuaiEarned = staking.userInfo ? Number(staking.userInfo.pendingRewardsFormatted) : 0;
+  const realQuaiClaimable = staking.userInfo ? Number(staking.userInfo.claimableRewardsFormatted) : 0;
+  const realQuaiDelayed = staking.userInfo ? Number(staking.userInfo.totalDelayedRewardsFormatted) : 0;
+  const realQuaiPending = staking.userInfo ? Number(staking.userInfo.pendingRewardsFormatted) : 0;
+  const realQuaiTotalEarned = realQuaiClaimable + realQuaiDelayed + realQuaiPending; // Total earned = claimable + delayed + pending
   const realQuaiApr = staking.contractInfo ? staking.contractInfo.apy : 0;
 
   // Only include positions that actually have staked amounts
@@ -336,11 +339,18 @@ export default function Portfolio() {
       name: 'QUAI',
       tokens: ['QUAI'],
       staked: realQuaiStaked,
-      earned: realQuaiEarned,
+      earned: realQuaiTotalEarned, // Total earned (all rewards)
+      claimableRewards: realQuaiClaimable,
+      totalDelayedRewards: realQuaiDelayed,
+      pendingRewards: realQuaiPending,
       apr: realQuaiApr,
       lockPeriod: staking.userInfo?.isLocked ? 30 : null,
       endDate: staking.userInfo?.lockEndTime ? new Date(staking.userInfo.lockEndTime * 1000).toISOString().split('T')[0] : null,
-      isReal: true
+      isReal: true,
+      userStatus: staking.userInfo?.userStatus || 'Unknown',
+      isInExitPeriod: staking.userInfo?.isInExitPeriod || false,
+      canExecuteWithdraw: staking.userInfo?.canExecuteWithdraw || false,
+      timeUntilWithdrawalAvailable: staking.userInfo?.timeUntilWithdrawalAvailable || 0
     });
   }
 
@@ -569,6 +579,31 @@ export default function Portfolio() {
                               `Claim`}
                           </Button>
                         )}
+                        {/* Withdrawal Actions for Native QUAI */}
+                        {position.id === 'native-quai' && position.isReal && position.isInExitPeriod && (
+                          position.canExecuteWithdraw ? (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="border-green-500 text-green-400 hover:bg-green-500 hover:text-white"
+                              onClick={() => staking.executeWithdraw()}
+                              disabled={staking.isTransacting}
+                            >
+                              {staking.isTransacting ? 'Processing...' : 'Complete'}
+                            </Button>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="border-orange-500 text-orange-400 hover:bg-orange-500 hover:text-white"
+                              onClick={() => staking.cancelWithdraw()}
+                              disabled={staking.isTransacting}
+                            >
+                              Cancel
+                            </Button>
+                          )
+                        )}
+                        
                         <Link href={`/stake/${position.id}?mode=manage`}>
                           <Button size="sm" variant="outline" className="border-[#333333] text-[#999999] hover:bg-[#222222]">
                             Manage
@@ -579,7 +614,7 @@ export default function Portfolio() {
                     </div>
 
                     {/* Stats Grid */}
-                    <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
                         <div className="text-lg font-bold text-white">{formatNumber(position.staked)}</div>
                         <div className="text-xs text-[#999999]">
@@ -591,12 +626,22 @@ export default function Portfolio() {
                       </div>
 
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
-                        <div className="text-lg font-bold text-orange-400">{formatBalance(position.earned)}</div>
+                        <div className="text-lg font-bold text-white">{formatBalance(position.earned)}</div>
                         <div className="text-xs text-[#999999]">
-                          Earned {position.id === 'wqi-quai' ? 'QUAI' : position.tokens[0]}
+                          Total Earned {position.id === 'wqi-quai' ? 'QUAI' : position.tokens[0]}
                         </div>
                         <div className="text-xs text-white mt-1">
                           ~${(position.earned * 0.05).toFixed(2)}
+                        </div>
+                      </div>
+
+                      <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
+                        <div className="text-lg font-bold text-white">{formatBalance(position.claimableRewards)}</div>
+                        <div className="text-xs text-[#999999]">
+                          Claimable Now
+                        </div>
+                        <div className="text-xs text-white mt-1">
+                          ~${(position.claimableRewards * 0.05).toFixed(2)}
                         </div>
                       </div>
 

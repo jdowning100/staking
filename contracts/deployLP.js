@@ -17,9 +17,13 @@ const CHAIN_ID = process.env.CHAIN_ID || '9';
 const LP_POOLS = {
   'WQI-QUAI': {
     lpTokenAddress: '0x001f91029Df78aF6D13cbFfa8724F1b2718da3F1',
-    rewardPerBlock: quais.parseQuai('0.1'), // 0.1 QUAI per block
-    poolLimitPerUser: quais.parseQuai('1000000'), // 1M LP tokens max per user
-    hasUserLimit: true
+    rewardTokenAddress: '0x0000000000000000000000000000000000000000', // Native QUAI (zero address)
+    rewardPerBlock: quais.parseQuai('0.001'), // 0.001 QUAI per block - matches frontend config
+    poolLimitPerUser: quais.parseQuai('1000'), // 1000 LP tokens max per user - matches frontend config
+    // Set periods to 1 hour for testing (3600 seconds) - matches frontend config
+    lockPeriod: 3600, // 1 hour lock period
+    rewardDelayPeriod: 3600, // 1 hour reward delay
+    exitPeriod: 3600 // 1 hour exit period
   }
   // Add more LP pools as needed
 };
@@ -36,15 +40,16 @@ async function deployLPStakingContract(poolName, config) {
   // Get current block for start block
   const currentBlock = await provider.getBlockNumber();
   const startBlock = currentBlock + 10; // Start rewards in 10 blocks
-  const bonusEndBlock = startBlock + (365 * 24 * 60 * 12); // 1 year of rewards (assuming 5 sec blocks)
 
   console.log('Contract deployment parameters:');
   console.log(`- LP Token: ${config.lpTokenAddress}`);
-  console.log(`- Reward per block: ${config.rewardPerBlock} wei`);
+  console.log(`- Reward Token: ${config.rewardTokenAddress} (Native QUAI)`);
+  console.log(`- Reward per block: ${quais.formatQuai(config.rewardPerBlock)} QUAI`);
   console.log(`- Start block: ${startBlock}`);
-  console.log(`- End block: ${bonusEndBlock}`);
-  console.log(`- Pool limit per user: ${config.poolLimitPerUser} wei`);
-  console.log(`- Admin: ${wallet.address}`);
+  console.log(`- Pool limit per user: ${quais.formatQuai(config.poolLimitPerUser)} LP tokens`);
+  console.log(`- Lock period: ${config.lockPeriod} seconds (1 hour)`);
+  console.log(`- Reward delay period: ${config.rewardDelayPeriod} seconds (1 hour)`);
+  console.log(`- Exit period: ${config.exitPeriod} seconds (1 hour)`);
 
   // Get IPFS hash and create contract factory
   const ipfsHash = await deployMetadata.pushMetadataToIPFS("SmartChefLP");
@@ -55,13 +60,18 @@ async function deployLPStakingContract(poolName, config) {
     ipfsHash
   );
 
+  // For SmartChefLP constructor:
+  // constructor(IERC20 _lpToken, IERC20 _rewardToken, uint256 _rewardPerBlock, uint256 _startBlock, 
+  //            uint256 _poolLimitPerUser, uint256 _lockPeriod, uint256 _rewardDelayPeriod, uint256 _exitPeriod)
   const deployTx = await factory.deploy(
-    config.lpTokenAddress,          // LP token address
-    config.rewardPerBlock,          // Reward per block
-    startBlock,                     // Start block
-    bonusEndBlock,                  // Bonus end block
-    config.poolLimitPerUser,        // Pool limit per user
-    wallet.address                  // Admin address
+    config.lpTokenAddress,          // _lpToken - LP token address
+    config.rewardTokenAddress,      // _rewardToken - reward token address (0x0 for native QUAI)
+    config.rewardPerBlock,          // _rewardPerBlock
+    startBlock,                     // _startBlock
+    config.poolLimitPerUser,        // _poolLimitPerUser
+    config.lockPeriod,              // _lockPeriod
+    config.rewardDelayPeriod,       // _rewardDelayPeriod
+    config.exitPeriod               // _exitPeriod
   );
 
   console.log(`Transaction hash: ${deployTx.deploymentTransaction().hash}`);
@@ -71,7 +81,7 @@ async function deployLPStakingContract(poolName, config) {
   const contractAddress = await deployTx.getAddress();
   console.log(`✅ ${poolName} LP Staking Contract deployed at: ${contractAddress}`);
 
-  // Add some initial rewards (10 QUAI)
+  // Add some initial rewards (10 QUAI) - using fundRewards for native QUAI
   console.log('\n💰 Adding initial rewards...');
   const stakingContract = new quais.Contract(
     contractAddress,
@@ -79,12 +89,14 @@ async function deployLPStakingContract(poolName, config) {
     wallet
   );
 
-  const addRewardsTx = await stakingContract.addRewards({
+  // For native QUAI rewards, we send QUAI directly to the contract
+  const fundRewardsTx = await wallet.sendTransaction({
+    to: contractAddress,
     value: quais.parseQuai('10'), // Add 10 QUAI as initial rewards
-    gasLimit: 500000
+    gasLimit: 300000
   });
 
-  await addRewardsTx.wait();
+  await fundRewardsTx.wait();
   console.log('✅ Added 10 QUAI as initial rewards');
 
   return {

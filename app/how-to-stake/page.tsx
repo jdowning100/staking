@@ -99,34 +99,43 @@ export default function HowToStake() {
               </div>
             </section>
 
-            {/* Lock Mechanism */}
+            {/* Lock & Delay Mechanism */}
             <section className="space-y-4">
-              <h2 className="text-xl font-semibold text-white">Understanding the Lock Mechanism</h2>
+              <h2 className="text-xl font-semibold text-white">Understanding the Lock & Delay Mechanism</h2>
               <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-6 space-y-4">
                 <div className="space-y-2">
                   <h3 className="text-lg font-medium text-white flex items-center gap-2">
-                    🔒 Lock Period
+                    🔒 Lock Period (1 Hour)
                   </h3>
                   <p className="text-[#999999]">
-                    When you stake QUAI, your tokens enter a lock period. During this time, you cannot withdraw your staked tokens, but you continue to earn rewards.
+                    When you stake QUAI, your tokens are locked for 1 hour. During this time, you cannot request withdrawals, but you continue to earn rewards.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <h3 className="text-lg font-medium text-white flex items-center gap-2">
-                    ⏰ Grace Period
+                    ⏰ Reward Delay (1 Hour)
                   </h3>
                   <p className="text-[#999999]">
-                    After the lock period ends, you enter a grace period where you can withdraw your tokens. If you don&apos;t withdraw during the grace period, your tokens automatically re-enter a new lock cycle.
+                    All rewards are delayed by 1 hour before they can be claimed. This prevents immediate dumping and helps protect token value.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <h3 className="text-lg font-medium text-white flex items-center gap-2">
-                    🚨 Emergency Withdraw
+                    🚪 Exit Window (1 Hour)
                   </h3>
                   <p className="text-[#999999]">
-                    In case of emergency, you can withdraw your staked tokens at any time, but you will forfeit all pending rewards.
+                    When you request a withdrawal, you enter a 1-hour exit window. During this period, you earn no rewards and cannot deposit more tokens. After 1 hour, you can complete your withdrawal.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-lg font-medium text-white flex items-center gap-2">
+                    🚨 Early Withdrawal Penalty
+                  </h3>
+                  <p className="text-[#999999]">
+                    If you request withdrawal before the lock period ends, you forfeit all pending rewards but still must wait the full exit window period.
                   </p>
                 </div>
               </div>

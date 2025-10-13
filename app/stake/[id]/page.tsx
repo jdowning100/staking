@@ -3,14 +3,14 @@ import React, { useContext, useState } from 'react';
 import { StateContext } from '@/store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useStaking } from '@/lib/hooks/useStaking';
 import { StakingInfo } from '@/components/ui/staking-info';
 import { LPStakingFlow } from '@/components/ui/lp-staking-flow';
-import { LP_POOLS } from '@/lib/config';
+import { LP_POOLS, LOCK_PERIOD, REWARD_DELAY_PERIOD, EXIT_PERIOD } from '@/lib/config';
 import useLPStaking from '@/lib/hooks/useLPStaking';
 
 // Token Logo Component
@@ -123,6 +123,7 @@ export default function StakePage() {
   const searchParams = useSearchParams();
   const { account } = useContext(StateContext);
   const [selectedPeriod, setSelectedPeriod] = useState(0);
+  const [showDetails, setShowDetails] = useState(false);
 
   // Use real staking hook for native QUAI
   const staking = useStaking();
@@ -169,7 +170,7 @@ export default function StakePage() {
   return (
     <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
       <div className="w-full max-w-2xl mx-auto">
-        
+
         {/* Back Button */}
         <div className="mb-6">
           <Link href="/" className="flex items-center gap-2 text-[#999999] hover:text-white transition-colors">
@@ -193,46 +194,123 @@ export default function StakePage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center">
                 <div className="text-lg font-bold text-green-400">
-                  {isRealStaking && staking.contractInfo ? 
-                    `${staking.contractInfo.apy.toFixed(1)}%` : 
+                  {isRealStaking && staking.contractInfo ?
+                    `${staking.contractInfo.apy.toFixed(1)}%` :
                     isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
-                    `${lpStaking.poolInfo.poolMetrics.apr >= 1000 ? 
-                      Math.round(lpStaking.poolInfo.poolMetrics.apr).toLocaleString() : 
-                      lpStaking.poolInfo.poolMetrics.apr.toFixed(1)}%` :
-                    `${currentPeriod.apr.toFixed(1)}%`}
+                      `${lpStaking.poolInfo.poolMetrics.apr >= 1000 ?
+                        Math.round(lpStaking.poolInfo.poolMetrics.apr).toLocaleString() :
+                        lpStaking.poolInfo.poolMetrics.apr.toFixed(1)}%` :
+                      `${currentPeriod.apr.toFixed(1)}%`}
                 </div>
                 <div className="text-xs text-[#666666]">APR</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
-                  {isRealStaking && staking.contractInfo ? 
-                    staking.contractInfo.totalStakedFormatted : 
+                  {isRealStaking && staking.contractInfo ?
+                    staking.contractInfo.totalStakedFormatted :
                     isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
-                    `${parseFloat(lpStaking.poolInfo.poolMetrics.totalStakedFormatted).toFixed(2)}` :
-                    formatNumber(pool.totalStaked)}
+                      `${parseFloat(lpStaking.poolInfo.poolMetrics.totalStakedFormatted).toFixed(2)}` :
+                      formatNumber(pool.totalStaked)}
                 </div>
                 <div className="text-xs text-[#666666]">Total Staked</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
-                  {isRealStaking || isRealLPPool ? "30 Days" : `${currentPeriod.days} Days`}
+                  {isRealStaking || isRealLPPool ? `${Math.floor(LOCK_PERIOD / 3600)} Hour` : `${currentPeriod.days} Days`}
                 </div>
                 <div className="text-xs text-[#666666]">Lock Period</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
-                  {isRealStaking ? "Locked" : 
-                   isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
-                   lpStaking.poolInfo.poolMetrics.activePositions :
-                   `${currentPeriod.multiplier}x`}
+                  {isRealStaking ? `${Math.floor(REWARD_DELAY_PERIOD/3600)}h / ${Math.floor(EXIT_PERIOD/3600)}h` :
+                    isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
+                      lpStaking.poolInfo.poolMetrics.activePositions :
+                      `${currentPeriod.multiplier}x`}
                 </div>
                 <div className="text-xs text-[#666666]">
-                  {isRealStaking ? "Mechanism" : 
-                   isRealLPPool ? "Active Positions" : "Multiplier"}
+                  {isRealStaking ? "Reward Delay / Exit Period" :
+                    isRealLPPool ? "Active Positions" : "Multiplier"}
                 </div>
               </div>
             </div>
+
+            {/* Show Details Button */}
+            {isRealStaking && (
+              <div className="flex justify-center mt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDetails(!showDetails)}
+                  className="border-[#333333] text-[#999999] hover:bg-[#222222] flex items-center"
+                >
+                  {showDetails ? (
+                    <span className="inline-flex items-center">
+                      <ChevronUp className="w-4 h-4 mr-2" />
+                      Hide Details
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center">
+                      <ChevronDown className="w-4 h-4 mr-2" />
+                      Show Details
+                    </span>
+                  )}
+                </Button>
+              </div>
+            )}
           </CardContent>
+          
+          {/* Detailed Information */}
+          {showDetails && isRealStaking && staking.contractInfo && (
+            <CardContent className="pt-0 border-t border-[#333333]">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <p className="text-[#999999]">Current Block</p>
+                    <p className="font-medium text-white">
+                      <a
+                        href={`https://quaiscan.io/block/${staking.contractInfo.currentBlock}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center hover:text-red-9"
+                      >
+                        <span>{staking.contractInfo.currentBlock}</span>
+                        <ExternalLink className="w-3 h-3 ml-1" />
+                      </a>
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[#999999]">Reward Per Block</p>
+                    <p className="font-medium text-white">
+                      {staking.contractInfo.rewardPerBlockFormatted} QUAI
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <p className="text-[#999999]">Contract Balance</p>
+                    <p className="font-medium text-white">
+                      {staking.contractInfo.contractBalanceFormatted} QUAI
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[#999999]">Reward Balance</p>
+                    <p className="font-medium text-white">
+                      {staking.contractInfo.rewardBalanceFormatted} QUAI
+                    </p>
+                  </div>
+                </div>
+
+                {staking.contractInfo.hasUserLimit && (
+                  <div className="p-3 bg-[#222222] rounded-md">
+                    <p className="text-[#999999] text-sm">
+                      Pool Limit Per User: {staking.contractInfo.poolLimitPerUserFormatted} QUAI
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {/* Real Staking Interface for Native QUAI */}
@@ -245,14 +323,15 @@ export default function StakePage() {
             error={staking.error}
             transactionHash={staking.transactionHash}
             onDeposit={staking.deposit}
-            onWithdraw={staking.withdraw}
+            onRequestWithdraw={staking.requestWithdraw}
+            onExecuteWithdraw={staking.executeWithdraw}
+            onCancelWithdraw={staking.cancelWithdraw}
             onClaimRewards={staking.claimRewards}
-            onEmergencyWithdraw={staking.emergencyWithdraw}
             onRefresh={staking.refreshData}
           />
         ) : isRealLPPool ? (
           /* LP Staking Flow for WQI/QUAI */
-          <LPStakingFlow 
+          <LPStakingFlow
             poolId={poolId}
             initialMode={mode === 'manage' ? 'manage' : 'stake'}
             onComplete={() => {
@@ -273,7 +352,7 @@ export default function StakePage() {
                   {pool.name} Staking Pool
                 </h3>
                 <p className="text-[#999999] max-w-md mx-auto">
-                  {poolId === 'wqi-quai' ? 
+                  {poolId === 'wqi-quai' ?
                     'WQI/QUAI LP staking is in development. Contract deployment coming soon!' :
                     'LP token staking pools are currently under development. Only locked QUAI staking is available at this time.'}
                 </p>

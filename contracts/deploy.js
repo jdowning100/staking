@@ -34,14 +34,22 @@ async function deploySmartChefNative() {
         const currentBlock = await provider.getBlockNumber()
         const startBlock = currentBlock + 10
         
-        // Configuration
+        // Configuration - consistent with frontend config
         const rewardPerBlock = quais.parseQuai('0.001') // 0.001 QUAI per block
         const poolLimitPerUser = quais.parseQuai('1000') // 1000 QUAI max per user
+        
+        // Set periods to 1 hour for testing (3600 seconds) - matches frontend config
+        const lockPeriod = 3600 // 1 hour lock period
+        const rewardDelayPeriod = 3600 // 1 hour reward delay
+        const exitPeriod = 3600 // 1 hour exit period
         
         console.log('Current block:', currentBlock)
         console.log('Start block:', startBlock)
         console.log('Reward per block:', quais.formatQuai(rewardPerBlock), 'QUAI')
         console.log('Pool limit per user:', quais.formatQuai(poolLimitPerUser), 'QUAI')
+        console.log('Lock period:', lockPeriod, 'seconds (1 hour)')
+        console.log('Reward delay period:', rewardDelayPeriod, 'seconds (1 hour)')
+        console.log('Exit period:', exitPeriod, 'seconds (1 hour)')
         
         const ipfsHash = await deployMetadata.pushMetadataToIPFS("SmartChefNative")
         const SmartChefNativeFactory = new quais.ContractFactory(
@@ -54,7 +62,10 @@ async function deploySmartChefNative() {
         const smartChefNative = await SmartChefNativeFactory.deploy(
             rewardPerBlock,
             startBlock,
-            poolLimitPerUser
+            poolLimitPerUser,
+            lockPeriod,
+            rewardDelayPeriod,
+            exitPeriod
         )
         
         console.log('SmartChefNative deployment transaction:', smartChefNative.deploymentTransaction().hash)
