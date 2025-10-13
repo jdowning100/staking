@@ -73,13 +73,15 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
 
     if (user.amount > 0) {
       uint256 pending = (user.amount * accTokenPerShare) / PRECISION_FACTOR - user.rewardDebt;
+
       if (pending > 0) {
-        // Check solvency: ensure we don't use the new deposit (msg.value) to pay old rewards
-        // Available rewards = (balance before deposit) - totalStaked
+        // Strict solvency: ensure we don't use the new deposit to pay old rewards
         uint256 balanceBeforeDeposit = address(this).balance - msg.value;
         require(balanceBeforeDeposit >= totalStaked, 'Contract invariant violated');
         uint256 rewardBalance = balanceBeforeDeposit - totalStaked;
-        require(pending <= rewardBalance, 'Insufficient reward balance');
+
+        // STRICT: do not burn rewards—revert if underfunded
+        require(pending <= rewardBalance, 'insufficient rewards');
         _safeTransferNative(msg.sender, pending);
         emit RewardClaimed(msg.sender, pending);
       }
@@ -112,10 +114,9 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     _updatePool();
     uint256 pending = (user.amount * accTokenPerShare) / PRECISION_FACTOR - user.rewardDebt;
     if (pending > 0) {
-      // Check solvency: ensure we don't dip into staked funds
-      // Must check against current balance minus ALL staked funds (not adjusting for withdrawal)
+      // Strict solvency vs current reward pot (excludes staked funds)
       uint256 rewardBalance = address(this).balance - totalStaked;
-      require(pending <= rewardBalance, 'Insufficient reward balance');
+      require(pending <= rewardBalance, 'insufficient rewards');
       _safeTransferNative(msg.sender, pending);
       emit RewardClaimed(msg.sender, pending);
     }
@@ -129,7 +130,6 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
       if (user.amount == 0) {
         user.lockStartTime = 0;
       }
-      // Otherwise, lock timing continues unchanged from original deposit
     }
 
     user.rewardDebt = (user.amount * accTokenPerShare) / PRECISION_FACTOR;
@@ -142,9 +142,9 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     _updatePool();
     uint256 pending = (user.amount * accTokenPerShare) / PRECISION_FACTOR - user.rewardDebt;
     if (pending > 0) {
-      // Check solvency: ensure we don't dip into staked funds
       uint256 rewardBalance = address(this).balance - totalStaked;
-      require(pending <= rewardBalance, 'Insufficient reward balance');
+      // STRICT: revert if underfunded so the user never loses pending
+      require(pending <= rewardBalance, 'insufficient rewards');
       _safeTransferNative(msg.sender, pending);
       emit RewardClaimed(msg.sender, pending);
     }
@@ -154,7 +154,8 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   // Withdraw staked tokens without rewards (emergency)
   function emergencyWithdraw() external nonReentrant {
     UserInfo storage user = userInfo[msg.sender];
-    require(block.timestamp >= user.lockStartTime + LOCK_PERIOD, 'Still locked');
+    require(user.amount > 0, 'No tokens staked');
+    // Emergency withdraw is always available - no lock restrictions
     uint256 amountToTransfer = user.amount;
     totalStaked = totalStaked - amountToTransfer;
     user.amount = 0;
@@ -182,8 +183,6 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     _updatePool(); // Lock in past rewards before changing rate
 
     // Calculate reward per block based on APY
-    // APY in basis points (1000 = 10%)
-    // Calculate blocks per year based on current block time
     uint256 blocksPerYear = (365 * 24 * 3600) / blockTime;
 
     if (totalStaked > 0) {
@@ -191,7 +190,6 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
       rewardPerBlock = (totalStaked * _newAPYBasisPoints) / (blocksPerYear * 10000);
     } else {
       // If no tokens staked, set a default based on expected stake
-      // This will auto-adjust when tokens are staked
       rewardPerBlock = (_newAPYBasisPoints * 1e18) / (blocksPerYear * 10000);
     }
 

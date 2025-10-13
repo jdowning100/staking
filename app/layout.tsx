@@ -41,6 +41,11 @@ export const metadata: Metadata = {
   title: APP_TITLE,
   description: APP_DESCRIPTION,
   metadataBase: new URL('https://nft.qu.ai'),
+  icons: {
+    icon: '/images/quai-logo.png',
+    shortcut: '/images/quai-logo.png',
+    apple: '/images/quai-logo.png',
+  },
   openGraph: {
     images: '/opengraph-image.png',
   },
