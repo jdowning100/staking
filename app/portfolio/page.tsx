@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useStaking } from '@/lib/hooks/useStaking';
+import useLPStaking from '@/lib/hooks/useLPStaking';
+import { LP_POOLS } from '@/lib/config';
 
 // Token Logo Component
 const TokenLogos = ({ tokens, size = 24 }: { tokens: string[], size?: number }) => {
@@ -102,6 +104,7 @@ const userStakingData = {
 export default function Portfolio() {
   const { account } = useContext(StateContext);
   const staking = useStaking();
+  const wqiQuaiLPStaking = useLPStaking('wqi-quai');
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) {
@@ -151,14 +154,37 @@ export default function Portfolio() {
     });
   }
   
-  // Add mock LP positions only if they have staked amounts (for demo purposes)
-  Object.entries(userStakingData).filter(([id]) => id !== 'native-quai').forEach(([id, data]) => {
+  // Add real WQI/QUAI LP position if user has staked amount
+  const realLPStaked = wqiQuaiLPStaking.poolInfo?.stakingInfo ? 
+    Number(wqiQuaiLPStaking.poolInfo.stakingInfo.stakedAmountFormatted) : 0;
+  const realLPEarned = wqiQuaiLPStaking.poolInfo?.stakingInfo ? 
+    Number(wqiQuaiLPStaking.poolInfo.stakingInfo.pendingRewardsFormatted) : 0;
+  const realLPApr = wqiQuaiLPStaking.poolInfo?.poolMetrics?.apr || 0;
+  
+  if (realLPStaked > 0 && LP_POOLS['wqi-quai']?.isActive) {
+    allPositions.push({
+      id: 'wqi-quai',
+      name: 'WQI/QUAI LP',
+      tokens: ['WQI', 'QUAI'],
+      staked: realLPStaked,
+      earned: realLPEarned,
+      apr: realLPApr,
+      lockPeriod: wqiQuaiLPStaking.poolInfo?.stakingInfo?.isLocked ? 30 : null,
+      endDate: wqiQuaiLPStaking.poolInfo?.stakingInfo?.lockStartTime ? 
+        new Date((wqiQuaiLPStaking.poolInfo.stakingInfo.lockStartTime + 30 * 24 * 60 * 60) * 1000).toISOString().split('T')[0] : 
+        null,
+      isReal: true
+    });
+  }
+  
+  // Add mock LP positions for other pools (only if they have staked amounts)
+  Object.entries(userStakingData).filter(([id]) => id !== 'native-quai' && id !== 'wqi-quai').forEach(([id, data]) => {
     if (data.staked > 0) {
       allPositions.push({
         id,
         ...data,
-        name: id === 'quai-usdc' ? 'QUAI/USDC LP' : id === 'wqi-quai' ? 'WQI/QUAI LP' : 'WQI/USDC LP',
-        tokens: id === 'quai-usdc' ? ['QUAI', 'USDC'] : id === 'wqi-quai' ? ['WQI', 'QUAI'] : ['WQI', 'USDC'],
+        name: id === 'quai-usdc' ? 'QUAI/USDC LP' : 'WQI/USDC LP',
+        tokens: id === 'quai-usdc' ? ['QUAI', 'USDC'] : ['WQI', 'USDC'],
         isReal: false
       });
     }
@@ -317,7 +343,11 @@ export default function Portfolio() {
                         <div>
                           <h3 className="text-lg font-semibold text-white">{position.name}</h3>
                           <div className="flex items-center gap-2">
-                            <span className="text-orange-400 text-sm font-medium">{position.apr}% APR</span>
+                            <span className="text-orange-400 text-sm font-medium">
+                              {position.apr >= 1000 ? 
+                                `${Math.round(position.apr).toLocaleString()}%` : 
+                                `${position.apr.toFixed(1)}%`} APR
+                            </span>
                             {position.lockPeriod && (
                               <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-1 rounded">
                                 🔒 {position.lockPeriod}D
@@ -335,19 +365,23 @@ export default function Portfolio() {
                             onClick={() => {
                               if (position.id === 'native-quai' && position.isReal) {
                                 staking.claimRewards();
+                              } else if (position.id === 'wqi-quai' && position.isReal) {
+                                wqiQuaiLPStaking.claimLPRewards();
                               } else {
-                                // Mock claim for LP tokens
-                                console.log(`Claiming ${position.earned.toFixed(2)} ${position.tokens[0]} from ${position.name}`);
+                                // Mock claim for other LP tokens
+                                console.log(`Claiming ${position.earned.toFixed(2)} rewards from ${position.name}`);
                               }
                             }}
-                            disabled={position.id === 'native-quai' && staking.isTransacting}
+                            disabled={(position.id === 'native-quai' && staking.isTransacting) ||
+                                     (position.id === 'wqi-quai' && wqiQuaiLPStaking.isTransacting)}
                           >
-                            {position.id === 'native-quai' && staking.isTransacting ? 
+                            {(position.id === 'native-quai' && staking.isTransacting) ||
+                             (position.id === 'wqi-quai' && wqiQuaiLPStaking.isTransacting) ? 
                               'Claiming...' : 
                               `Claim`}
                           </Button>
                         )}
-                        <Link href={`/stake/${position.id}`}>
+                        <Link href={`/stake/${position.id}?mode=manage`}>
                           <Button size="sm" variant="outline" className="border-[#333333] text-[#999999] hover:bg-[#222222]">
                             Manage
                             <ArrowRight className="h-3 w-3 ml-1" />
@@ -360,12 +394,16 @@ export default function Portfolio() {
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
                         <div className="text-lg font-bold text-white">{formatNumber(position.staked)}</div>
-                        <div className="text-xs text-[#999999]">Staked {position.tokens[0]}</div>
+                        <div className="text-xs text-[#999999]">
+                          Staked {position.tokens.length > 1 ? 'LP' : position.tokens[0]}
+                        </div>
                       </div>
                       
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
                         <div className="text-lg font-bold text-orange-400">{position.earned.toFixed(2)}</div>
-                        <div className="text-xs text-[#999999]">Earned {position.tokens[0]}</div>
+                        <div className="text-xs text-[#999999]">
+                          Earned {position.id === 'wqi-quai' ? 'QUAI' : position.tokens[0]}
+                        </div>
                       </div>
                       
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">

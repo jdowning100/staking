@@ -12,7 +12,7 @@ export default function WhatIsSOAP() {
           <CardHeader>
             <CardTitle className="text-3xl font-bold text-white">What is SOAP?</CardTitle>
             <CardDescription className="text-[#999999]">
-              Understanding the Staked Operations Acquisition Protocol
+              Understanding the Subsidized Open-market Acquisition Protocol - How Quai turns merge-mining into token buybacks
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8">
@@ -20,10 +20,33 @@ export default function WhatIsSOAP() {
             <section className="space-y-4">
               <div className="bg-gradient-to-r from-red-900/20 to-purple-900/20 border border-red-900/50 rounded-lg p-6">
                 <h2 className="text-xl font-semibold text-white mb-4">SOAP Overview</h2>
+                <p className="text-[#999999] leading-relaxed mb-4">
+                  SOAP (Subsidized Open-market Acquisition Protocol) transforms traditional merge-mining into a protocol subsidy mechanism. 
+                  Instead of miners receiving rewards from multiple chains directly (creating selling pressure), SOAP routes 
+                  parent chain rewards to protocol-controlled addresses that automatically buy QUAI tokens.
+                </p>
                 <p className="text-[#999999] leading-relaxed">
-                  SOAP (Staked Operations Acquisition Protocol) is an innovative mechanism that uses daily QUAI buybacks 
-                  to reward stakers and reduce token supply through strategic burning. It creates sustainable value for 
-                  QUAI holders while incentivizing long-term network participation.
+                  The purchased QUAI is then either burned to reduce supply or distributed to time-locked stakers, 
+                  creating continuous buy pressure while rewarding long-term network participants.
+                </p>
+              </div>
+            </section>
+
+            {/* The Problem with Traditional Merge Mining */}
+            <section className="space-y-4">
+              <h2 className="text-xl font-semibold text-white">The Merge-Mining Innovation</h2>
+              <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-6">
+                <p className="text-[#999999] leading-relaxed mb-4">
+                  Traditional merge-mining allows miners to work on multiple blockchains simultaneously without splitting 
+                  their computational power. Famous examples include Namecoin with Bitcoin, and Dogecoin with Litecoin.
+                </p>
+                <p className="text-[#999999] leading-relaxed mb-4">
+                  <strong className="text-white">The Problem:</strong> In traditional setups, miners receive rewards from both chains directly, 
+                  often immediately selling the child chain's tokens, creating ongoing selling pressure.
+                </p>
+                <p className="text-[#999999] leading-relaxed">
+                  <strong className="text-white">SOAP's Solution:</strong> Channel that flow into permanent protocol support by converting 
+                  external mining rewards into QUAI buybacks instead of direct miner payouts.
                 </p>
               </div>
             </section>
@@ -33,80 +56,194 @@ export default function WhatIsSOAP() {
               <h2 className="text-xl font-semibold text-white">How SOAP Works</h2>
               <div className="space-y-4">
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-red-9 rounded-full flex items-center justify-center text-white font-bold">
+                  <div className="flex-shrink-0 w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">
                     1
                   </div>
                   <div className="flex-1 space-y-2">
-                    <h3 className="text-lg font-medium text-white">Daily QUAI Buybacks</h3>
+                    <h3 className="text-lg font-medium text-white">Multi-Chain Mining</h3>
                     <p className="text-[#999999]">
-                      SOAP conducts regular buybacks of QUAI tokens from the open market using protocol revenue and treasury funds.
+                      Miners with SHA256d (BCH), Scrypt (LTC/DOGE), or KAWPOW hardware can mine QUAI while 
+                      their parent chain rewards are automatically routed to protocol-controlled addresses.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-red-9 rounded-full flex items-center justify-center text-white font-bold">
+                  <div className="flex-shrink-0 w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">
                     2
                   </div>
                   <div className="flex-1 space-y-2">
-                    <h3 className="text-lg font-medium text-white">Token Distribution</h3>
+                    <h3 className="text-lg font-medium text-white">Automatic QUAI Buybacks</h3>
                     <p className="text-[#999999]">
-                      Purchased tokens are split between burning (reducing supply) and rewards distribution to stakers across different pools.
+                      Parent chain rewards (BCH, LTC, DOGE) are automatically converted to QUAI at market rates, 
+                      creating continuous buy pressure instead of selling pressure.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-red-9 rounded-full flex items-center justify-center text-white font-bold">
+                  <div className="flex-shrink-0 w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">
                     3
                   </div>
                   <div className="flex-1 space-y-2">
-                    <h3 className="text-lg font-medium text-white">Staker Rewards</h3>
+                    <h3 className="text-lg font-medium text-white">Burn & Reward Distribution</h3>
                     <p className="text-[#999999]">
-                      Remaining tokens are distributed to stakers based on their pool allocation and stake size, creating sustainable yield.
+                      Purchased QUAI is either burned to reduce supply or distributed to time-locked stakers, 
+                      creating sustainable yield without token inflation.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">
+                    4
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <h3 className="text-lg font-medium text-white">Enhanced Security</h3>
+                    <p className="text-[#999999]">
+                      Workshares from different algorithms contribute to block weight and economic finality, 
+                      making reorg attacks more expensive while diversifying the security model.
                     </p>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Key Features */}
+            {/* Technical Innovation */}
             <section className="space-y-4">
-              <h2 className="text-xl font-semibold text-white">Key Features</h2>
+              <h2 className="text-xl font-semibold text-white">Technical Innovation: Workshares & AuxPoW</h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="bg-blue-900/20 border border-blue-900/50 rounded-lg p-4">
+                  <h3 className="text-lg font-medium text-blue-400 mb-2">📋 Workshares</h3>
+                  <p className="text-[#999999] text-sm mb-2">
+                    QUAI blocks are produced exclusively by KAWPOW miners, but other algorithms 
+                    (SHA256d, Scrypt) can submit "workshares" that get included in blocks.
+                  </p>
+                  <p className="text-[#999999] text-sm">
+                    Each workshare proves computational work on parent chains and earns proportional QUAI rewards.
+                  </p>
+                </div>
+                
+                <div className="bg-purple-900/20 border border-purple-900/50 rounded-lg p-4">
+                  <h3 className="text-lg font-medium text-purple-400 mb-2">🔗 AuxPoW Proofs</h3>
+                  <p className="text-[#999999] text-sm mb-2">
+                    Auxiliary Proof-of-Work structures verify that parent chain blocks actually 
+                    paid the protocol address and included required SOAP commitments.
+                  </p>
+                  <p className="text-[#999999] text-sm">
+                    This ensures trustless verification without requiring changes to existing mining infrastructure.
+                  </p>
+                </div>
+
+                <div className="bg-green-900/20 border border-green-900/50 rounded-lg p-4">
+                  <h3 className="text-lg font-medium text-green-400 mb-2">⚖️ Multi-Algorithm Security</h3>
+                  <p className="text-[#999999] text-sm mb-2">
+                    Hardware diversity across SHA256d, Scrypt, and KAWPOW ASICs makes it harder 
+                    for any single manufacturer or hardware class to dominate.
+                  </p>
+                  <p className="text-[#999999] text-sm">
+                    Each algorithm contributes to block weight, making reorgs proportionally more expensive.
+                  </p>
+                </div>
+
+                <div className="bg-orange-900/20 border border-orange-900/50 rounded-lg p-4">
+                  <h3 className="text-lg font-medium text-orange-400 mb-2">🎛️ Graceful Degradation</h3>
+                  <p className="text-[#999999] text-sm mb-2">
+                    SOAP is designed to fail gracefully. If parent chain participation drops to zero, 
+                    QUAI continues producing KAWPOW blocks normally.
+                  </p>
+                  <p className="text-[#999999] text-sm">
+                    There's no liveness coupling - workshares are purely additive benefits.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* Economic Model */}
+            <section className="space-y-4">
+              <h2 className="text-xl font-semibold text-white">Economic Model & Incentives</h2>
+              <div className="bg-gradient-to-r from-green-900/20 to-blue-900/20 border border-green-900/50 rounded-lg p-6">
+                <h3 className="text-lg font-medium text-white mb-4">Why Miners Participate</h3>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <h4 className="text-md font-medium text-green-400 mb-2">Parent Chain Miners (BCH/LTC/DOGE)</h4>
+                    <ul className="text-[#999999] text-sm space-y-1">
+                      <li>• Receive QUAI rewards for workshare submissions</li>
+                      <li>• Diversify earnings across multiple tokens</li>
+                      <li>• Contribute to Quai security while mining parent chains</li>
+                      <li>• Profitability depends on QUAI price vs parent chain tokens</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="text-md font-medium text-blue-400 mb-2">KAWPOW Miners</h4>
+                    <ul className="text-[#999999] text-sm space-y-1">
+                      <li>• Receive standard QUAI block rewards</li>
+                      <li>• Benefit from SOAP buyback pressure on QUAI price</li>
+                      <li>• Secure Quai directly using KAWPOW algorithm</li>
+                      <li>• Block production unchanged from standard mining</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-6">
+                <h3 className="text-lg font-medium text-white mb-3">Market Dynamics</h3>
+                <p className="text-[#999999] text-sm mb-3">
+                  <strong className="text-white">Best Case:</strong> Non-mercenary miners hold their QUAI rewards while parent chain 
+                  subsidies create continuous buy pressure, leading to net positive price action.
+                </p>
+                <p className="text-[#999999] text-sm mb-3">
+                  <strong className="text-white">Worst Case:</strong> Miners immediately sell QUAI while protocol buys with subsidies, 
+                  creating net-zero flow but maintaining price stability.
+                </p>
+                <p className="text-[#999999] text-sm">
+                  <strong className="text-white">Feedback Loop:</strong> Higher QUAI prices → More hashrate → Stronger security → 
+                  More attractive to parent chains → More subsidy flows → More buybacks.
+                </p>
+              </div>
+            </section>
+
+            {/* Key Benefits */}
+            <section className="space-y-4">
+              <h2 className="text-xl font-semibold text-white">Key Benefits</h2>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-red-9 mb-2 flex items-center gap-2">
-                    🔥 Token Burning
+                  <h3 className="text-lg font-medium text-red-400 mb-2 flex items-center gap-2">
+                    🔥 Deflationary Mechanism
                   </h3>
                   <p className="text-[#999999] text-sm">
-                    A percentage of buyback tokens are permanently burned, reducing total supply and creating deflationary pressure.
+                    Parent chain subsidies fund QUAI burns, reducing total supply while external miners provide security 
+                    without requiring QUAI emission increases.
                   </p>
                 </div>
                 
                 <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-4">
                   <h3 className="text-lg font-medium text-green-400 mb-2 flex items-center gap-2">
-                    💰 Staking Rewards
+                    💰 Sustainable Rewards
                   </h3>
                   <p className="text-[#999999] text-sm">
-                    Stakers receive regular QUAI rewards based on their participation in various pools with different risk/reward profiles.
+                    Staking rewards come from external protocol subsidies rather than inflation, 
+                    creating sustainable yield backed by real economic activity.
                   </p>
                 </div>
                 
                 <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-4">
                   <h3 className="text-lg font-medium text-blue-400 mb-2 flex items-center gap-2">
-                    🏊 Multiple Pools
+                    🛡️ Enhanced Security
                   </h3>
                   <p className="text-[#999999] text-sm">
-                    Different staking pools offer varying APRs: locked QUAI, LP tokens, and stable pairs to suit different risk appetites.
+                    Multi-algorithm workshares increase block weight and reorg costs while diversifying 
+                    security across different hardware supply chains.
                   </p>
                 </div>
                 
                 <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-4">
                   <h3 className="text-lg font-medium text-purple-400 mb-2 flex items-center gap-2">
-                    📊 Dynamic APRs
+                    📊 Inverted Economics
                   </h3>
                   <p className="text-[#999999] text-sm">
-                    Rewards automatically adjust based on TVL and buyback amounts, creating market-responsive yield optimization.
+                    Unlike traditional merge-mining that creates selling pressure, SOAP converts 
+                    external mining into permanent buy pressure and protocol support.
                   </p>
                 </div>
               </div>
