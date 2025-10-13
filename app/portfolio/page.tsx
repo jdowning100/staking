@@ -45,22 +45,22 @@ const ConnectWalletButton = () => {
     const initializeParticles = () => {
       const rect = button.getBoundingClientRect();
       const particleCount = 12;
-      
+
       for (let i = 0; i < particleCount; i++) {
         const sizes = ['size-small', 'size-medium', 'size-large'];
         const size = sizes[Math.floor(Math.random() * sizes.length)];
-        
+
         const particle = document.createElement('div');
         particle.className = `particle ${size}`;
         particle.style.opacity = '0';
-        
+
         const padding = 15;
         const x = padding + Math.random() * (rect.width - padding * 2);
         const y = padding + Math.random() * (rect.height - padding * 2);
-        
+
         particle.style.left = `${x}px`;
         particle.style.top = `${y}px`;
-        
+
         canvas.appendChild(particle);
 
         const particleData = {
@@ -81,36 +81,36 @@ const ConnectWalletButton = () => {
 
     const updateParticles = () => {
       const rect = button.getBoundingClientRect();
-      
+
       particlesRef.current.forEach((particle, index) => {
         const isPreLoaded = particle.id < 20;
-        
+
         if (isPreLoaded && isHovered.current) {
           const dx = mousePos.current.x - particle.x;
           const dy = mousePos.current.y - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          
+
           const lag = 0.015 + (index * 0.008);
           const followDistance = 25 + (index * 6);
-          
+
           if (isMouseMoving.current || distance > followDistance) {
             particle.vx += dx * lag;
             particle.vy += dy * lag;
-            
+
             if (isMouseMoving.current) {
               particle.vx += (Math.random() - 0.5) * 0.6;
               particle.vy += (Math.random() - 0.5) * 0.6;
             }
           }
-          
+
           const friction = isMouseMoving.current ? 0.90 : 0.85;
           particle.vx *= friction;
           particle.vy *= friction;
         }
-        
+
         particle.x += particle.vx;
         particle.y += particle.vy;
-        
+
         // Boundary collision
         if (particle.x <= 0 || particle.x >= rect.width - 8) {
           particle.vx *= -0.8;
@@ -120,11 +120,11 @@ const ConnectWalletButton = () => {
           particle.vy *= -0.8;
           particle.y = Math.max(0, Math.min(rect.height - 8, particle.y));
         }
-        
+
         particle.element.style.left = `${particle.x}px`;
         particle.element.style.top = `${particle.y}px`;
       });
-      
+
       if (isHovered.current) {
         animationRef.current = requestAnimationFrame(updateParticles);
       }
@@ -135,13 +135,13 @@ const ConnectWalletButton = () => {
       prevMousePos.current = { ...mousePos.current };
       mousePos.current.x = e.clientX - rect.left;
       mousePos.current.y = e.clientY - rect.top;
-      
+
       const dx = mousePos.current.x - prevMousePos.current.x;
       const dy = mousePos.current.y - prevMousePos.current.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      
+
       isMouseMoving.current = distance > 1;
-      
+
       if (mouseTimeoutRef.current) {
         clearTimeout(mouseTimeoutRef.current);
       }
@@ -189,7 +189,7 @@ const ConnectWalletButton = () => {
 
   return (
     <div className="rotating-border-wrapper">
-      <Button 
+      <Button
         ref={buttonRef}
         onClick={() => requestAccounts(dispatch)}
         className="w-full h-16 bg-transparent hover:bg-black/30 text-white font-medium rounded border-0 particle-button px-8"
@@ -328,7 +328,7 @@ export default function Portfolio() {
 
   // Only include positions that actually have staked amounts
   const allPositions = [];
-  
+
   // Add real QUAI position only if user has staked amount
   if (realQuaiStaked > 0) {
     allPositions.push({
@@ -343,14 +343,14 @@ export default function Portfolio() {
       isReal: true
     });
   }
-  
+
   // Add real WQI/QUAI LP position if user has staked amount
-  const realLPStaked = wqiQuaiLPStaking.poolInfo?.stakingInfo ? 
+  const realLPStaked = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
     Number(wqiQuaiLPStaking.poolInfo.stakingInfo.stakedAmountFormatted) : 0;
-  const realLPEarned = wqiQuaiLPStaking.poolInfo?.stakingInfo ? 
+  const realLPEarned = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
     Number(wqiQuaiLPStaking.poolInfo.stakingInfo.pendingRewardsFormatted) : 0;
   const realLPApr = wqiQuaiLPStaking.poolInfo?.poolMetrics?.apr || 0;
-  
+
   if (realLPStaked > 0 && LP_POOLS['wqi-quai']?.isActive) {
     allPositions.push({
       id: 'wqi-quai',
@@ -360,13 +360,13 @@ export default function Portfolio() {
       earned: realLPEarned,
       apr: realLPApr,
       lockPeriod: wqiQuaiLPStaking.poolInfo?.stakingInfo?.isLocked ? 30 : null,
-      endDate: wqiQuaiLPStaking.poolInfo?.stakingInfo?.lockStartTime ? 
-        new Date((wqiQuaiLPStaking.poolInfo.stakingInfo.lockStartTime + 30 * 24 * 60 * 60) * 1000).toISOString().split('T')[0] : 
+      endDate: wqiQuaiLPStaking.poolInfo?.stakingInfo?.lockStartTime ?
+        new Date((wqiQuaiLPStaking.poolInfo.stakingInfo.lockStartTime + 30 * 24 * 60 * 60) * 1000).toISOString().split('T')[0] :
         null,
       isReal: true
     });
   }
-  
+
   // Add mock LP positions for other pools (only if they have staked amounts)
   Object.entries(userStakingData).filter(([id]) => id !== 'native-quai' && id !== 'wqi-quai').forEach(([id, data]) => {
     if (data.staked > 0) {
@@ -386,7 +386,7 @@ export default function Portfolio() {
   const totalClaimable = activePositions.reduce((sum, pos) => sum + pos.earned, 0);
 
   // Calculate weighted APR
-  const weightedApr = activePositions.length > 0 
+  const weightedApr = activePositions.length > 0
     ? activePositions.reduce((sum, pos) => sum + (pos.apr * pos.staked), 0) / totalStaked
     : 0;
 
@@ -415,7 +415,7 @@ export default function Portfolio() {
       <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
         <div className="w-full max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold text-white mb-8">Your Portfolio</h1>
-          
+
           <Card className="modern-card">
             <CardContent className="p-12 text-center">
               <Loader2 className="h-16 w-16 text-red-600 mx-auto mb-4 animate-spin" />
@@ -435,7 +435,7 @@ export default function Portfolio() {
       <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
         <div className="w-full max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold text-white mb-8">Your Portfolio</h1>
-          
+
           <Card className="modern-card">
             <CardContent className="p-12 text-center">
               <TrendingUp className="h-16 w-16 text-[#666666] mx-auto mb-4" />
@@ -469,7 +469,7 @@ export default function Portfolio() {
               <div className="text-xs text-[#666666]">QUAI</div>
             </CardContent>
           </Card>
-          
+
           <Card className="modern-card">
             <CardContent className="p-4 text-center">
               <div className="text-xl font-bold text-orange-400">{formatBalance(totalEarned)}</div>
@@ -477,7 +477,7 @@ export default function Portfolio() {
               <div className="text-xs text-[#666666]">QUAI</div>
             </CardContent>
           </Card>
-          
+
           <Card className="modern-card">
             <CardContent className="p-4 text-center">
               <div className="text-xl font-bold text-red-400">{weightedApr.toFixed(1)}%</div>
@@ -485,7 +485,7 @@ export default function Portfolio() {
               <div className="text-xs text-[#666666]">Average</div>
             </CardContent>
           </Card>
-          
+
           <Card className="modern-card">
             <CardContent className="p-4 text-center">
               <div className="text-xl font-bold text-orange-500">{activePositions.length}</div>
@@ -516,11 +516,11 @@ export default function Portfolio() {
         {/* Active Positions - Cleaner layout */}
         <div className="space-y-4">
           <h2 className="text-xl font-semibold text-white">Active Positions</h2>
-          
+
           <div className="space-y-4">
             {activePositions.map((position, index) => {
               const daysRemaining = position.endDate ? getDaysRemaining(position.endDate) : null;
-              
+
               return (
                 <Card key={index} className="modern-card">
                   <CardContent className="p-6">
@@ -532,8 +532,8 @@ export default function Portfolio() {
                           <h3 className="text-lg font-semibold text-white">{position.name}</h3>
                           <div className="flex items-center gap-2">
                             <span className="text-orange-400 text-sm font-medium">
-                              {position.apr >= 1000 ? 
-                                `${Math.round(position.apr).toLocaleString()}%` : 
+                              {position.apr >= 1000 ?
+                                `${Math.round(position.apr).toLocaleString()}%` :
                                 `${position.apr.toFixed(1)}%`} APR
                             </span>
                             {position.lockPeriod && (
@@ -546,8 +546,8 @@ export default function Portfolio() {
                       </div>
                       <div className="flex gap-2">
                         {position.earned > 0 && (
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             className="border-orange-500 text-orange-400 hover:bg-orange-500 hover:text-white"
                             onClick={() => {
@@ -561,11 +561,11 @@ export default function Portfolio() {
                               }
                             }}
                             disabled={(position.id === 'native-quai' && staking.isTransacting) ||
-                                     (position.id === 'wqi-quai' && wqiQuaiLPStaking.isTransacting)}
+                              (position.id === 'wqi-quai' && wqiQuaiLPStaking.isTransacting)}
                           >
                             {(position.id === 'native-quai' && staking.isTransacting) ||
-                             (position.id === 'wqi-quai' && wqiQuaiLPStaking.isTransacting) ? 
-                              'Claiming...' : 
+                              (position.id === 'wqi-quai' && wqiQuaiLPStaking.isTransacting) ?
+                              'Claiming...' :
                               `Claim`}
                           </Button>
                         )}
@@ -579,29 +579,28 @@ export default function Portfolio() {
                     </div>
 
                     {/* Stats Grid */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                    <div className="grid grid-cols-3 gap-4 mb-4">
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
                         <div className="text-lg font-bold text-white">{formatNumber(position.staked)}</div>
                         <div className="text-xs text-[#999999]">
                           Staked {position.tokens.length > 1 ? 'LP' : position.tokens[0]}
                         </div>
+                        <div className="text-xs text-white mt-1">
+                          ~${(position.staked * 0.05).toLocaleString()}
+                        </div>
                       </div>
-                      
+
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
                         <div className="text-lg font-bold text-orange-400">{formatBalance(position.earned)}</div>
                         <div className="text-xs text-[#999999]">
                           Earned {position.id === 'wqi-quai' ? 'QUAI' : position.tokens[0]}
                         </div>
-                      </div>
-                      
-                      <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
-                        <div className="text-lg font-bold text-white">
-                          ${(position.staked * 0.05).toLocaleString()}
+                        <div className="text-xs text-white mt-1">
+                          ~${(position.earned * 0.05).toFixed(2)}
                         </div>
-                        <div className="text-xs text-[#999999]">USD Value</div>
                       </div>
-                      
-                      <div className="text-center p-3 bg-[#0a0a0a] rounded-lg">
+
+                      <div className="text-center p-3 bg-[#0a0a0a] rounded-lg flex flex-col justify-center">
                         {daysRemaining !== null ? (
                           <>
                             <div className="text-lg font-bold text-white">{daysRemaining}</div>
@@ -615,7 +614,7 @@ export default function Portfolio() {
                         )}
                       </div>
                     </div>
-                    
+
                     {/* Bottom Row */}
                     {position.endDate && (
                       <div className="text-sm text-[#999999]">
@@ -647,9 +646,9 @@ export default function Portfolio() {
                   Calculator
                 </Button>
               </Link>
-              <a 
-                href={account?.addr ? `https://quaiscan.io/address/${account.addr}` : "https://quaiscan.io"} 
-                target="_blank" 
+              <a
+                href={account?.addr ? `https://quaiscan.io/address/${account.addr}` : "https://quaiscan.io"}
+                target="_blank"
                 rel="noopener noreferrer"
               >
                 <Button variant="outline" size="sm" className="border-[#333333] text-[#999999] hover:bg-[#222222]">

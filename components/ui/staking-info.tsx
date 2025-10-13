@@ -86,6 +86,60 @@ export function StakingInfo({
     );
   }
 
+  // Precompute UI fragments to simplify JSX
+  const lockStatusNode = (() => {
+    if (!userInfo) return 'Unlocked';
+    if (userInfo.isLocked) {
+      return (
+        <span className="inline-flex items-center gap-1">
+          <Lock className="h-3 w-3" />
+          {`Locked (${formatTimeRemaining(userInfo.timeUntilUnlock)})`}
+        </span>
+      );
+    }
+    if (userInfo.isInGracePeriod) {
+      return (
+        <span className="inline-flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          {`Grace Period (${formatTimeRemaining(userInfo.timeLeftInGracePeriod)})`}
+        </span>
+      );
+    }
+    return 'Unlocked';
+  })();
+
+  const depositBtnContent = isTransacting ? (
+    <span className="inline-flex items-center">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      Processing...
+    </span>
+  ) : (
+    'Deposit'
+  );
+
+  const withdrawBtnContent = isTransacting ? (
+    <span className="inline-flex items-center">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      Processing...
+    </span>
+  ) : !userInfo?.canWithdraw ? (
+    <span className="inline-flex items-center">
+      <Lock className="mr-2 h-4 w-4" />
+      Locked
+    </span>
+  ) : (
+    'Withdraw'
+  );
+
+  const claimBtnContent = isTransacting
+    ? (
+        <span className="inline-flex items-center">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Processing...
+        </span>
+      )
+    : `Claim ${userInfo?.pendingRewardsFormatted ?? ''} ${TOKEN_SYMBOL}`;
+
   return (
     <div className="space-y-4">
       <Card className="modern-card overflow-hidden">
@@ -157,21 +211,7 @@ export function StakingInfo({
               </div>
               <div className="flex justify-between">
                 <span className="text-[#999999]">Lock Status</span>
-                <span className={`font-medium flex items-center gap-1 ${userInfo.isLocked ? 'text-yellow-400' : 'text-green-400'}`}>
-                  {userInfo.isLocked ? (
-                    <>
-                      <Lock className="h-3 w-3" />
-                      Locked ({formatTimeRemaining(userInfo.timeUntilUnlock)})
-                    </>
-                  ) : userInfo.isInGracePeriod ? (
-                    <>
-                      <Clock className="h-3 w-3" />
-                      Grace Period ({formatTimeRemaining(userInfo.timeLeftInGracePeriod)})
-                    </>
-                  ) : (
-                    'Unlocked'
-                  )}
-                </span>
+                <span className={`font-medium flex items-center gap-1 ${userInfo.isLocked ? 'text-yellow-400' : 'text-green-400'}`}>{lockStatusNode}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#999999]">Current Cycle</span>
@@ -226,14 +266,7 @@ export function StakingInfo({
                   disabled={isTransacting || !depositAmount || parseFloat(depositAmount) <= 0}
                   className="w-full bg-red-9 hover:bg-red-10 text-white"
                 >
-                  {isTransacting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    'Deposit'
-                  )}
+                  {depositBtnContent}
                 </Button>
               </div>
             ) : (
@@ -261,19 +294,7 @@ export function StakingInfo({
                       : 'bg-red-9 hover:bg-red-10 text-white'
                   )}
                 >
-                  {isTransacting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : !userInfo?.canWithdraw ? (
-                    <>
-                      <Lock className="mr-2 h-4 w-4" />
-                      Locked
-                    </>
-                  ) : (
-                    'Withdraw'
-                  )}
+                  {withdrawBtnContent}
                 </Button>
                 {userInfo && userInfo.isLocked && (
                   <p className="text-xs text-yellow-400 text-center">
@@ -291,14 +312,7 @@ export function StakingInfo({
               disabled={isTransacting}
               className="w-full bg-green-600 hover:bg-green-700 text-white"
             >
-              {isTransacting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                `Claim ${userInfo.pendingRewardsFormatted} ${TOKEN_SYMBOL}`
-              )}
+              {claimBtnContent}
             </Button>
           )}
 
@@ -309,15 +323,15 @@ export function StakingInfo({
             className="w-full border-[#333333] text-[#999999] hover:bg-[#222222] flex items-center justify-center"
           >
             {showDetails ? (
-              <>
+              <span className="inline-flex items-center">
                 <ChevronUp className="w-4 h-4 mr-2" />
                 Hide Details
-              </>
+              </span>
             ) : (
-              <>
+              <span className="inline-flex items-center">
                 <ChevronDown className="w-4 h-4 mr-2" />
                 Show Details
-              </>
+              </span>
             )}
           </Button>
 
@@ -334,7 +348,7 @@ export function StakingInfo({
                       rel="noopener noreferrer"
                       className="flex items-center hover:text-red-9"
                     >
-                      {contractInfo.currentBlock}
+                      <span>{contractInfo.currentBlock}</span>
                       <ExternalLink className="w-3 h-3 ml-1" />
                     </a>
                   </p>
