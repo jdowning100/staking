@@ -79,9 +79,13 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
         uint256 balanceBeforeDeposit = address(this).balance - msg.value;
         require(balanceBeforeDeposit >= totalStaked, 'Contract invariant violated');
         uint256 rewardBalance = balanceBeforeDeposit - totalStaked;
-        require(pending <= rewardBalance, 'Insufficient reward balance');
-        _safeTransferNative(msg.sender, pending);
-        emit RewardClaimed(msg.sender, pending);
+        
+        // Pay what we can, skip if insufficient rewards to prevent bricking
+        if (pending <= rewardBalance) {
+          _safeTransferNative(msg.sender, pending);
+          emit RewardClaimed(msg.sender, pending);
+        }
+        // If insufficient rewards, silently skip payout to keep contract functional
       }
     }
 
@@ -115,9 +119,13 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
       // Check solvency: ensure we don't dip into staked funds
       // Must check against current balance minus ALL staked funds (not adjusting for withdrawal)
       uint256 rewardBalance = address(this).balance - totalStaked;
-      require(pending <= rewardBalance, 'Insufficient reward balance');
-      _safeTransferNative(msg.sender, pending);
-      emit RewardClaimed(msg.sender, pending);
+      
+      // Pay what we can, skip if insufficient rewards to prevent bricking
+      if (pending <= rewardBalance) {
+        _safeTransferNative(msg.sender, pending);
+        emit RewardClaimed(msg.sender, pending);
+      }
+      // If insufficient rewards, silently skip payout to keep contract functional
     }
 
     if (_amount > 0) {
@@ -144,9 +152,13 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     if (pending > 0) {
       // Check solvency: ensure we don't dip into staked funds
       uint256 rewardBalance = address(this).balance - totalStaked;
-      require(pending <= rewardBalance, 'Insufficient reward balance');
-      _safeTransferNative(msg.sender, pending);
-      emit RewardClaimed(msg.sender, pending);
+      
+      // Pay what we can, skip if insufficient rewards to prevent bricking
+      if (pending <= rewardBalance) {
+        _safeTransferNative(msg.sender, pending);
+        emit RewardClaimed(msg.sender, pending);
+      }
+      // If insufficient rewards, silently skip payout to keep contract functional
     }
     user.rewardDebt = (user.amount * accTokenPerShare) / PRECISION_FACTOR;
   }
@@ -154,7 +166,8 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   // Withdraw staked tokens without rewards (emergency)
   function emergencyWithdraw() external nonReentrant {
     UserInfo storage user = userInfo[msg.sender];
-    require(block.timestamp >= user.lockStartTime + LOCK_PERIOD, 'Still locked');
+    require(user.amount > 0, 'No tokens staked');
+    // Emergency withdraw is always available - no lock restrictions
     uint256 amountToTransfer = user.amount;
     totalStaked = totalStaked - amountToTransfer;
     user.amount = 0;

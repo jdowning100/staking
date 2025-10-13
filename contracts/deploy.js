@@ -3,7 +3,7 @@ const { deployMetadata } = require("hardhat");
 require('dotenv').config()
 
 // Import contract artifacts
-const SmartChefJson = require('../artifacts/contracts/SmartChef.sol/SmartChef.json')
+const SmartChefNativeJson = require('../artifacts/contracts/SmartChefNative.sol/SmartChefNative.json')
 
 /**
  * Note on transaction receipt handling in quais.js:
@@ -16,37 +16,67 @@ const SmartChefJson = require('../artifacts/contracts/SmartChef.sol/SmartChef.js
  * and handle them in the catch blocks.
  */
 
-async function deploySmartChef() {
-    console.log('Starting deployment of SmartChef contract...\n')
+async function deploySmartChefNative() {
+    console.log('Starting deployment of SmartChefNative contract...\n')
 
     // Config provider and wallet
-    const provider = new quais.JsonRpcProvider(hre.network.config.url, undefined, { usePathing: true })
-    const wallet = new quais.Wallet(hre.network.config.accounts[0], provider)
+    const provider = new quais.JsonRpcProvider(process.env.RPC_URL, undefined, { usePathing: true })
+    const wallet = new quais.Wallet(process.env.CYPRUS1_PK, provider)
 
     console.log('Deploying from address:', wallet.address)
     console.log("Wallet balance:", quais.formatQuai(await provider.getBalance(wallet.address)))
-    console.log('Network:', hre.network.name)
-    console.log('RPC URL:', hre.network.config.url)
+    console.log('Network: Cyprus-1')
+    console.log('RPC URL:', process.env.RPC_URL)
 
-    console.log('\n=== Deploying SmartChef Contract ===')
+    console.log('\n=== Deploying SmartChefNative Contract ===')
     try {
-        const ipfsHashSmartChef = await deployMetadata.pushMetadataToIPFS("SmartChef")
-        const SmartChefFactory = new quais.ContractFactory(SmartChefJson.abi, SmartChefJson.bytecode, wallet, ipfsHashSmartChef)
-        const smartChef = await SmartChefFactory.deploy()
-        console.log('SmartChef deployment transaction:', smartChef.deploymentTransaction().hash)
-        await smartChef.waitForDeployment()
-        const smartChefAddress = await smartChef.getAddress()
-        console.log('SmartChef deployed to:', smartChefAddress)
-
-        // Run basic tests
-        console.log('\nRunning SmartChef basic tests...')
+        // Get current block and set start block
+        const currentBlock = await provider.getBlockNumber()
+        const startBlock = currentBlock + 10
+        
+        // Configuration
+        const rewardPerBlock = quais.parseQuai('0.001') // 0.001 QUAI per block
+        const poolLimitPerUser = quais.parseQuai('1000') // 1000 QUAI max per user
+        
+        console.log('Current block:', currentBlock)
+        console.log('Start block:', startBlock)
+        console.log('Reward per block:', quais.formatQuai(rewardPerBlock), 'QUAI')
+        console.log('Pool limit per user:', quais.formatQuai(poolLimitPerUser), 'QUAI')
+        
+        const ipfsHash = await deployMetadata.pushMetadataToIPFS("SmartChefNative")
+        const SmartChefNativeFactory = new quais.ContractFactory(
+            SmartChefNativeJson.abi, 
+            SmartChefNativeJson.bytecode, 
+            wallet, 
+            ipfsHash
+        )
+        
+        const smartChefNative = await SmartChefNativeFactory.deploy(
+            rewardPerBlock,
+            startBlock,
+            poolLimitPerUser
+        )
+        
+        console.log('SmartChefNative deployment transaction:', smartChefNative.deploymentTransaction().hash)
+        await smartChefNative.waitForDeployment()
+        const contractAddress = await smartChefNative.getAddress()
+        console.log('SmartChefNative deployed to:', contractAddress)
+        
+        console.log('\n🎉 Deployment successful!')
+        console.log('Contract Address:', contractAddress)
+        console.log('\n⚠️ Remember to:')
+        console.log('1. Update .env with NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS=' + contractAddress)
+        console.log('2. Fund the contract with rewards using fundRewards()')
+        
+        return contractAddress
 
     } catch (error) {
-        console.error('Error deploying/testing SmartChef:', error.message)
+        console.error('Error deploying SmartChefNative:', error.message)
+        throw error
     }
 }
 
-deploySmartChef()
+deploySmartChefNative()
     .then(() => process.exit(0))
     .catch((error) => {
         console.error(error)
