@@ -17,13 +17,13 @@ const CHAIN_ID = process.env.CHAIN_ID || '9';
 const LP_POOLS = {
   'WQI-QUAI': {
     lpTokenAddress: '0x001f91029Df78aF6D13cbFfa8724F1b2718da3F1',
-    rewardTokenAddress: '0x0000000000000000000000000000000000000000', // Native QUAI (zero address)
+    // Reward token is ERC20 WQUAI (not native). Must hold WQUAI in the deployer wallet.
+    rewardTokenAddress: '0x006c3e2aaae5db1bcd11a1a097ce572312eaddbb', // WQUAI
     rewardPerBlock: quais.parseQuai('0.001'), // 0.001 QUAI per block - matches frontend config
     poolLimitPerUser: quais.parseQuai('1000'), // 1000 LP tokens max per user - matches frontend config
-    // Set periods to 1 hour for testing (3600 seconds) - matches frontend config
-    lockPeriod: 3600, // 1 hour lock period
-    rewardDelayPeriod: 3600, // 1 hour reward delay
-    exitPeriod: 3600 // 1 hour exit period
+    // Periods: 10 minutes reward delay and exit window
+    rewardDelayPeriod: 600, // 10 minutes
+    exitPeriod: 600 // 10 minutes
   }
   // Add more LP pools as needed
 };
@@ -43,13 +43,13 @@ async function deployLPStakingContract(poolName, config) {
 
   console.log('Contract deployment parameters:');
   console.log(`- LP Token: ${config.lpTokenAddress}`);
-  console.log(`- Reward Token: ${config.rewardTokenAddress} (Native QUAI)`);
+  console.log(`- Reward Token (ERC20): ${config.rewardTokenAddress}`);
   console.log(`- Reward per block: ${quais.formatQuai(config.rewardPerBlock)} QUAI`);
   console.log(`- Start block: ${startBlock}`);
   console.log(`- Pool limit per user: ${quais.formatQuai(config.poolLimitPerUser)} LP tokens`);
-  console.log(`- Lock period: ${config.lockPeriod} seconds (1 hour)`);
-  console.log(`- Reward delay period: ${config.rewardDelayPeriod} seconds (1 hour)`);
-  console.log(`- Exit period: ${config.exitPeriod} seconds (1 hour)`);
+  // Note: There is no global lockPeriod parameter in the contract anymore; users choose 10m/20m on deposit.
+  console.log(`- Reward delay period: ${config.rewardDelayPeriod} seconds (10 minutes)`);
+  console.log(`- Exit period: ${config.exitPeriod} seconds (10 minutes)`);
 
   // Get IPFS hash and create contract factory
   const ipfsHash = await deployMetadata.pushMetadataToIPFS("SmartChefLP");
@@ -61,15 +61,14 @@ async function deployLPStakingContract(poolName, config) {
   );
 
   // For SmartChefLP constructor:
-  // constructor(IERC20 _lpToken, IERC20 _rewardToken, uint256 _rewardPerBlock, uint256 _startBlock, 
-  //            uint256 _poolLimitPerUser, uint256 _lockPeriod, uint256 _rewardDelayPeriod, uint256 _exitPeriod)
+  // constructor(IERC20 _lpToken, IERC20 _rewardToken, uint256 _rewardPerBlock, uint256 _startBlock,
+  //            uint256 _poolLimitPerUser, uint256 _rewardDelayPeriod, uint256 _exitPeriod)
   const deployTx = await factory.deploy(
     config.lpTokenAddress,          // _lpToken - LP token address
     config.rewardTokenAddress,      // _rewardToken - reward token address (0x0 for native QUAI)
     config.rewardPerBlock,          // _rewardPerBlock
     startBlock,                     // _startBlock
     config.poolLimitPerUser,        // _poolLimitPerUser
-    config.lockPeriod,              // _lockPeriod
     config.rewardDelayPeriod,       // _rewardDelayPeriod
     config.exitPeriod               // _exitPeriod
   );
@@ -81,23 +80,26 @@ async function deployLPStakingContract(poolName, config) {
   const contractAddress = await deployTx.getAddress();
   console.log(`✅ ${poolName} LP Staking Contract deployed at: ${contractAddress}`);
 
-  // Add some initial rewards (10 QUAI) - using fundRewards for native QUAI
-  console.log('\n💰 Adding initial rewards...');
-  const stakingContract = new quais.Contract(
-    contractAddress,
-    SmartChefLPArtifact.abi,
-    wallet
-  );
+  // Add some initial rewards (10 WQUAI) using ERC20 approve + fundRewards
+  console.log('\n💰 Adding initial rewards (ERC20 WQUAI)...');
+  const stakingContract = new quais.Contract(contractAddress, SmartChefLPArtifact.abi, wallet);
+  const erc20Abi = [
+    'function approve(address spender, uint256 value) external returns (bool)',
+    'function balanceOf(address account) external view returns (uint256)'
+  ];
+  const rewardToken = new quais.Contract(config.rewardTokenAddress, erc20Abi, wallet);
+  const initialAmount = quais.parseQuai('10');
 
-  // For native QUAI rewards, we send QUAI directly to the contract
-  const fundRewardsTx = await wallet.sendTransaction({
-    to: contractAddress,
-    value: quais.parseQuai('10'), // Add 10 QUAI as initial rewards
-    gasLimit: 300000
-  });
-
-  await fundRewardsTx.wait();
-  console.log('✅ Added 10 QUAI as initial rewards');
+  const bal = await rewardToken.balanceOf(wallet.address);
+  if (bal < initialAmount) {
+    console.warn('⚠️  Skipping initial funding: insufficient WQUAI balance in deployer wallet');
+  } else {
+    const approveTx = await rewardToken.approve(contractAddress, initialAmount);
+    await approveTx.wait();
+    const fundTx = await stakingContract.fundRewards(initialAmount, { gasLimit: 300000 });
+    await fundTx.wait();
+    console.log('✅ Added 10 WQUAI as initial rewards');
+  }
 
   return {
     contractAddress: contractAddress,
