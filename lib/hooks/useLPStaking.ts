@@ -2,7 +2,8 @@ import { Contract, JsonRpcProvider, Shard, formatUnits, parseUnits } from 'quais
 import { useContext, useState, useEffect, useCallback } from 'react';
 import { StateContext } from '@/store';
 import ERC20ABI from '@/lib/abis/ERC20.json';
-import SmartChefLPABI from '@/lib/SmartChefLP.json';
+import SmartChefLPArtifact from '@/artifacts/contracts/SmartChefLP.sol/SmartChefLP.json';
+const SmartChefLPABI = (SmartChefLPArtifact as any).abi;
 import { RPC_URL, TOKEN_ADDRESSES, LP_POOLS } from '@/lib/config';
 
 // Helper function to format numbers with up to 3 decimals but remove trailing zeros
@@ -41,12 +42,14 @@ export interface LPStakingInfo {
   delayedRewards: { amount: bigint; unlockTime: number; amountFormatted: string; timeUntilUnlock: number }[];
   rewardDebt: bigint;
   lockStartTime: number;
+  lockDurationSeconds?: number;
   isLocked: boolean;
-  isInGracePeriod: boolean;
+  isInExitPeriod: boolean;
+  canRequestWithdraw: boolean;
+  canExecuteWithdraw: boolean;
   timeUntilUnlock: number;
   timeUntilWithdrawalAvailable: number;
-  timeLeftInGracePeriod: number;
-  currentCycle: number;
+  userStatus?: string;
 }
 
 export interface LPPoolMetrics {
@@ -54,13 +57,14 @@ export interface LPPoolMetrics {
   totalStakedFormatted: string;
   totalValueLocked: string;
   apr: number;
+  apy30?: number;
+  apy90?: number;
   activePositions: number;
   rewardPerBlock: bigint;
   rewardPerBlockFormatted: string;
   rewardBalance: bigint;
   rewardBalanceFormatted: string;
   startBlock: number;
-  endBlock: number;
   isActive: boolean;
 }
 
@@ -83,6 +87,7 @@ export function useLPStaking(poolId: string) {
   const [poolInfo, setPoolInfo] = useState<LPPoolInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isTransacting, setIsTransacting] = useState(false);
+  const [transactionStage, setTransactionStage] = useState<'idle' | 'approving' | 'staking'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
 
@@ -218,68 +223,42 @@ export function useLPStaking(poolId: string) {
             console.warn('LP pendingReward() unavailable on staking contract, using 0');
           }
 
-          // Attempt to gather lock details via getLockInfo (preferred),
-          // then gracefully fall back to computing using LOCK_PERIOD/GRACE_PERIOD.
+          // Attempt to gather lock and exit details
           let isLocked = false;
-          let isInGracePeriod = false;
+          let isInExitPeriod = false;
           let timeUntilUnlock = 0;
-          let timeLeftInGracePeriod = 0;
-          let currentCycle = 0;
 
           let LOCK_PERIOD_ONCHAIN: bigint | null = null;
           let GRACE_PERIOD_ONCHAIN: bigint | null = null;
 
-          // Try consolidated getter first
-          try {
-            const lockInfo = await stakingContract.getLockInfo(account.addr);
-            // lockInfo: [lockStartTime, currentCycle, locked, inGracePeriod, timeUntilUnlock_, timeLeftInGrace_]
-            if (lockInfo) {
-              const [lockStartTime_, currentCycle_, locked_, inGracePeriod_, tUnlock_, tGrace_] = lockInfo as [bigint, bigint, boolean, boolean, bigint, bigint];
-              userInfo.lockStartTime = Number(lockStartTime_ ?? userInfo.lockStartTime);
-              isLocked = Boolean(locked_);
-              isInGracePeriod = Boolean(inGracePeriod_);
-              timeUntilUnlock = Number(tUnlock_ ?? 0);
-              timeLeftInGracePeriod = Number(tGrace_ ?? 0);
-              currentCycle = Number(currentCycle_ ?? 0);
+          try { isInExitPeriod = await stakingContract.isInExitPeriod(account.addr); } catch {}
+          try { isLocked = await stakingContract.isLocked(account.addr); } catch {}
+          // Robust compute using on-chain start/duration if available
+          const onchainLockStart = Number(userInfo.lockStartTime || 0);
+          const onchainLockDuration = Number((userInfo as any).lockDuration || 0);
+          if (onchainLockStart > 0 && onchainLockDuration > 0) {
+            const end = onchainLockStart + onchainLockDuration;
+            const now = Math.floor(Date.now() / 1000);
+            if (now < end) {
+              isLocked = true;
+              timeUntilUnlock = end - now;
+            } else {
+              timeUntilUnlock = 0;
             }
-          } catch (e) {
-            // Fallback path: compute lock status if possible
-            try {
-              LOCK_PERIOD_ONCHAIN = await stakingContract.LOCK_PERIOD();
-            } catch {}
-            try {
-              GRACE_PERIOD_ONCHAIN = await stakingContract.GRACE_PERIOD();
-            } catch {}
-
-            const lockStart = Number(userInfo.lockStartTime ?? 0);
-            const nowTs = Math.floor(Date.now() / 1000);
-            const lockPeriodSec = Number((LOCK_PERIOD_ONCHAIN ?? BigInt(0)));
-            const gracePeriodSec = Number((GRACE_PERIOD_ONCHAIN ?? BigInt(0)));
-
-            if (lockStart > 0 && lockPeriodSec > 0) {
-              const unlockTs = lockStart + lockPeriodSec;
-              if (nowTs < unlockTs) {
-                isLocked = true;
-                timeUntilUnlock = Math.max(0, unlockTs - nowTs);
-              } else if (gracePeriodSec > 0 && nowTs < unlockTs + gracePeriodSec) {
-                isInGracePeriod = true;
-                timeLeftInGracePeriod = Math.max(0, unlockTs + gracePeriodSec - nowTs);
-              }
-              if (lockPeriodSec > 0) {
-                currentCycle = Math.max(0, Math.floor((nowTs - lockStart) / lockPeriodSec));
-              }
-            }
+          } else {
+            try { timeUntilUnlock = Number(await stakingContract.timeUntilUnlock(account.addr)); } catch {}
+            if (timeUntilUnlock > 0) isLocked = true;
           }
 
           // Rewards delay views
           let claimableRewards: bigint = BigInt(0);
           let totalDelayedRewards: bigint = BigInt(0);
-          let delayedRewardsArr: any[] = [];
           let timeUntilWithdrawalAvailable = 0;
-          try { claimableRewards = await stakingContract.claimableRewards(account.addr); } catch {}
-          try { totalDelayedRewards = await stakingContract.totalDelayedRewards(account.addr); } catch {}
-          try { delayedRewardsArr = await stakingContract.getDelayedRewards(account.addr); } catch {}
+          try { claimableRewards = await stakingContract.claimableView(account.addr); } catch {}
+          try { totalDelayedRewards = await stakingContract.lockedView(account.addr); } catch {}
           try { timeUntilWithdrawalAvailable = Number(await stakingContract.timeUntilWithdrawalAvailable(account.addr)); } catch {}
+
+          const lockDurationSeconds = Number((userInfo as any).lockDuration || 0);
 
           stakingInfo = {
             stakedAmount: userInfo.amount || BigInt(0),
@@ -290,24 +269,20 @@ export function useLPStaking(poolId: string) {
             claimableRewardsFormatted: formatBalance(formatUnits(claimableRewards || BigInt(0), 18)),
             totalDelayedRewards,
             totalDelayedRewardsFormatted: formatBalance(formatUnits(totalDelayedRewards || BigInt(0), 18)),
-            delayedRewards: (delayedRewardsArr || []).map((r: any) => {
-              const amount: bigint = (r && (r.amount ?? r[0])) || BigInt(0);
-              const unlockTime: number = Number((r && (r.unlockTime ?? r[1])) || 0);
-              return {
-                amount,
-                unlockTime,
-                amountFormatted: formatBalance(formatUnits(amount, 18)),
-                timeUntilUnlock: Math.max(0, unlockTime - Math.floor(Date.now() / 1000))
-              };
-            }),
+            delayedRewards: [
+              ...(claimableRewards > BigInt(0) ? [{ amount: claimableRewards, unlockTime: Math.floor(Date.now()/1000)-1, amountFormatted: formatBalance(formatUnits(claimableRewards,18)), timeUntilUnlock: 0 }] : []),
+              ...((totalDelayedRewards > claimableRewards) ? [{ amount: totalDelayedRewards - claimableRewards, unlockTime: Math.floor(Date.now()/1000)+600, amountFormatted: formatBalance(formatUnits((totalDelayedRewards - claimableRewards),18)), timeUntilUnlock: 600 }] : [])
+            ],
             rewardDebt: userInfo.rewardDebt || BigInt(0),
             lockStartTime: Number(userInfo.lockStartTime) || 0,
+            lockDurationSeconds,
             isLocked,
-            isInGracePeriod,
+            isInExitPeriod,
+            canRequestWithdraw: !isLocked && !isInExitPeriod,
+            canExecuteWithdraw: isInExitPeriod && timeUntilWithdrawalAvailable === 0,
             timeUntilUnlock,
             timeUntilWithdrawalAvailable,
-            timeLeftInGracePeriod,
-            currentCycle
+            userStatus: isInExitPeriod ? (timeUntilWithdrawalAvailable === 0 ? 'Withdrawal ready' : 'In exit period') : (isLocked ? 'Locked' : 'Unlocked')
           };
 
           // Get global pool metrics (isolate calls to avoid failing the whole section)
@@ -315,52 +290,42 @@ export function useLPStaking(poolId: string) {
           let rewardPerBlock = BigInt(0);
           let rewardBalance = BigInt(0);
           let startBlock = BigInt(0);
-          let bonusEndBlock = BigInt(0);
           let currentBlockNumber = 0;
 
           try { totalStaked = await stakingContract.totalStaked(); } catch {}
           try { rewardPerBlock = await stakingContract.rewardPerBlock(); } catch {}
           try { rewardBalance = await stakingContract.getRewardBalance(); } catch {}
           try { startBlock = await stakingContract.startBlock(); } catch {}
-          try { bonusEndBlock = await stakingContract.bonusEndBlock(); } catch {}
           try { currentBlockNumber = await provider.getBlockNumber(Shard.Cyprus1); } catch {}
 
-          // Calculate APR
-          // APR = (rewardPerBlock * blocksPerYear) / totalStaked * 100
-          const blocksPerYear = 365 * 24 * 60 * 12; // ~5 second blocks (6,307,200 blocks/year)
+          // Calculate APR (match native behavior with duration boosts)
+          const blocksPerYear = 365 * 24 * 60 * 12; // ~5s blocks/year
           const rewardPerBlockFormatted = Number(formatUnits(rewardPerBlock, 18));
           const totalStakedFormatted = Number(formatUnits(totalStaked, 18));
+          let totalInExitPeriod = BigInt(0);
+          try { totalInExitPeriod = await stakingContract.totalInExitPeriod(); } catch {}
+          const totalInExitFormatted = Number(formatUnits(totalInExitPeriod, 18));
+          const activeStakedFormatted = Math.max(0, totalStakedFormatted - totalInExitFormatted);
           const yearlyRewards = rewardPerBlockFormatted * blocksPerYear;
-          
-          // Calculate true dynamic APR based on current staking
-          let estimatedAPR = 0;
-          if (totalStakedFormatted > 0) {
-            estimatedAPR = (yearlyRewards / totalStakedFormatted) * 100;
-          }
 
-          // Estimate active positions (this is approximate since we don't have a direct count)
-          // We'll estimate based on average stake size
-          const averageStakeSize = 100; // Assume average 100 LP tokens per position
-          const estimatedActivePositions = totalStakedFormatted > 0 ? Math.ceil(totalStakedFormatted / averageStakeSize) : 0;
-
-          // Check if rewards are still active
-          const rewardsActive = bonusEndBlock && Number(bonusEndBlock) > 0
-            ? currentBlockNumber < Number(bonusEndBlock)
-            : true;
+          const baseAPR = activeStakedFormatted > 0 ? (yearlyRewards / activeStakedFormatted) * 100 : 0;
+          const apy10 = baseAPR * 1.0; // 10m
+          const apy20 = baseAPR * 1.5; // 20m
 
           poolMetrics = {
             totalStaked,
             totalStakedFormatted: formatBalance(formatUnits(totalStaked, 18)),
-            totalValueLocked: formatBalance(formatUnits(totalStaked, 18)), // For LP tokens, TVL equals total staked
-            apr: estimatedAPR, // True dynamic APR - no cap
-            activePositions: estimatedActivePositions,
+            totalValueLocked: formatBalance(formatUnits(totalStaked, 18)),
+            apr: baseAPR,
+            apy30: apy10,
+            apy90: apy20,
+            activePositions: 0,
             rewardPerBlock,
             rewardPerBlockFormatted: formatBalance(formatUnits(rewardPerBlock, 18)),
             rewardBalance,
             rewardBalanceFormatted: formatBalance(formatUnits(rewardBalance, 18)),
             startBlock: Number(startBlock),
-            endBlock: Number(bonusEndBlock),
-            isActive: rewardsActive && rewardBalance > BigInt(0)
+            isActive: rewardBalance > BigInt(0)
           };
 
         } catch (error) {
@@ -439,8 +404,49 @@ export function useLPStaking(poolId: string) {
     loadPoolInfo();
   }, [loadPoolInfo]);
 
+  // Lightweight rewards refresh (claimable/locked/pending only)
+  const refreshRewards = useCallback(async () => {
+    if (!account?.addr || !poolConfig?.stakingContract) return;
+    if (!poolInfo?.stakingInfo || poolInfo.stakingInfo.stakedAmount === BigInt(0)) return;
+
+    try {
+      const provider = new JsonRpcProvider(RPC_URL);
+      const stakingContract = new Contract(poolConfig.stakingContract, SmartChefLPABI, provider);
+      const [pending, claimable, locked, tUnlock, tExitAvail] = await Promise.all([
+        stakingContract.pendingReward(account.addr).catch(() => BigInt(0)),
+        stakingContract.claimableView(account.addr).catch(() => BigInt(0)),
+        stakingContract.lockedView(account.addr).catch(() => BigInt(0)),
+        stakingContract.timeUntilUnlock(account.addr).catch(() => 0),
+        stakingContract.timeUntilWithdrawalAvailable(account.addr).catch(() => 0),
+      ]);
+
+      // Update in-place
+      setPoolInfo(prev => prev ? {
+        ...prev,
+        stakingInfo: prev.stakingInfo ? {
+          ...prev.stakingInfo,
+          pendingRewards: pending,
+          pendingRewardsFormatted: formatBalance(formatUnits(pending, 18)),
+          claimableRewards: claimable,
+          claimableRewardsFormatted: formatBalance(formatUnits(claimable, 18)),
+          totalDelayedRewards: locked,
+          totalDelayedRewardsFormatted: formatBalance(formatUnits(locked, 18)),
+          timeUntilUnlock: Number(tUnlock || 0),
+          timeUntilWithdrawalAvailable: Number(tExitAvail || 0),
+          delayedRewards: [
+            ...(claimable > BigInt(0) ? [{ amount: claimable, unlockTime: Math.floor(Date.now()/1000)-1, amountFormatted: formatBalance(formatUnits(claimable,18)), timeUntilUnlock: 0 }] : []),
+            ...((locked > claimable) ? [{ amount: locked - claimable, unlockTime: Math.floor(Date.now()/1000)+600, amountFormatted: formatBalance(formatUnits((locked - claimable),18)), timeUntilUnlock: 600 }] : [])
+          ],
+        } : prev.stakingInfo
+      } : prev);
+    } catch (e) {
+      console.warn('LP refreshRewards skipped:', e);
+    }
+  }, [account, poolConfig?.stakingContract, poolInfo?.stakingInfo?.stakedAmount]);
+
   // Stake LP tokens in the staking contract
-  const stakeLPTokens = useCallback(async (amount: string, durationDays: number = 30) => {
+  // Stake LP tokens with duration; accepts seconds (<= 7 days treated as seconds) or days otherwise
+  const stakeLPTokens = useCallback(async (amount: string, durationInput: number = 600) => {
     if (!account?.addr || !web3Provider || !poolConfig.stakingContract) {
       setError('Please connect your wallet or staking contract not deployed');
       return false;
@@ -452,6 +458,7 @@ export function useLPStaking(poolId: string) {
     }
 
     setIsTransacting(true);
+    setTransactionStage('idle');
     setError(null);
     setTransactionHash(null);
 
@@ -465,18 +472,21 @@ export function useLPStaking(poolId: string) {
       const allowance = await checkAllowance(poolConfig.lpToken, poolConfig.stakingContract);
       if (parseFloat(allowance.toString()) < parseFloat(amount)) {
         console.log('Approving LP tokens for staking...');
+        setTransactionStage('approving');
         const approved = await approveToken(poolConfig.lpToken, poolConfig.stakingContract, amountWei);
         if (!approved) {
           throw new Error('LP token approval failed');
         }
       }
 
-      // Stake LP tokens with optional duration (try 2-arg signature first)
-      const durationSeconds = durationDays === 90 ? 90 * 24 * 60 * 60 : 30 * 24 * 60 * 60;
+      // Stake LP tokens with duration
+      const durationSeconds = durationInput <= 7 * 24 * 60 * 60 ? durationInput : durationInput * 24 * 60 * 60;
       let tx;
       try {
+        setTransactionStage('staking');
         tx = await stakingContract.deposit(amountWei, durationSeconds, { gasLimit: 700000 });
       } catch (e: any) {
+        setTransactionStage('staking');
         tx = await stakingContract.deposit(amountWei, { gasLimit: 700000 });
       }
       setTransactionHash(tx.hash);
@@ -493,8 +503,86 @@ export function useLPStaking(poolId: string) {
       return false;
     } finally {
       setIsTransacting(false);
+      setTransactionStage('idle');
     }
   }, [account, web3Provider, poolConfig, checkAllowance, approveToken, loadPoolInfo]);
+
+  // Request withdrawal (LP exit window)
+  const requestLPWithdraw = useCallback(async (amount: string) => {
+    if (!account?.addr || !web3Provider || !poolConfig.stakingContract) {
+      setError('Please connect your wallet or staking contract not deployed');
+      return false;
+    }
+    setIsTransacting(true);
+    setError(null);
+    setTransactionHash(null);
+    try {
+      const signer = await web3Provider.getSigner();
+      const stakingContract = new Contract(poolConfig.stakingContract, SmartChefLPABI, signer);
+      const amountWei = parseUnits(amount, 18);
+      const tx = await stakingContract.requestWithdraw(amountWei, { gasLimit: 500000 });
+      setTransactionHash(tx.hash);
+      await tx.wait();
+      await loadPoolInfo();
+      return true;
+    } catch (error: any) {
+      console.error('LP request withdraw failed:', error);
+      setError(error.message || 'LP request withdraw failed. Please try again.');
+      return false;
+    } finally {
+      setIsTransacting(false);
+    }
+  }, [account, web3Provider, poolConfig, loadPoolInfo]);
+
+  const executeLPWithdraw = useCallback(async () => {
+    if (!account?.addr || !web3Provider || !poolConfig.stakingContract) {
+      setError('Please connect your wallet or staking contract not deployed');
+      return false;
+    }
+    setIsTransacting(true);
+    setError(null);
+    setTransactionHash(null);
+    try {
+      const signer = await web3Provider.getSigner();
+      const stakingContract = new Contract(poolConfig.stakingContract, SmartChefLPABI, signer);
+      const tx = await stakingContract.executeWithdraw({ gasLimit: 500000 });
+      setTransactionHash(tx.hash);
+      await tx.wait();
+      await loadPoolInfo();
+      return true;
+    } catch (error: any) {
+      console.error('LP execute withdraw failed:', error);
+      setError(error.message || 'LP execute withdraw failed. Please try again.');
+      return false;
+    } finally {
+      setIsTransacting(false);
+    }
+  }, [account, web3Provider, poolConfig, loadPoolInfo]);
+
+  const cancelLPWithdraw = useCallback(async () => {
+    if (!account?.addr || !web3Provider || !poolConfig.stakingContract) {
+      setError('Please connect your wallet or staking contract not deployed');
+      return false;
+    }
+    setIsTransacting(true);
+    setError(null);
+    setTransactionHash(null);
+    try {
+      const signer = await web3Provider.getSigner();
+      const stakingContract = new Contract(poolConfig.stakingContract, SmartChefLPABI, signer);
+      const tx = await stakingContract.cancelWithdraw({ gasLimit: 400000 });
+      setTransactionHash(tx.hash);
+      await tx.wait();
+      await loadPoolInfo();
+      return true;
+    } catch (error: any) {
+      console.error('LP cancel withdraw failed:', error);
+      setError(error.message || 'LP cancel withdraw failed. Please try again.');
+      return false;
+    } finally {
+      setIsTransacting(false);
+    }
+  }, [account, web3Provider, poolConfig, loadPoolInfo]);
 
   // Load pool info when wallet is connected
   useEffect(() => {
@@ -504,6 +592,13 @@ export function useLPStaking(poolId: string) {
       setPoolInfo(null);
     }
   }, [account, poolConfig, loadPoolInfo]);
+
+  // Periodically refresh rewards when staked
+  useEffect(() => {
+    if (!poolInfo?.stakingInfo || poolInfo.stakingInfo.stakedAmount === BigInt(0)) return;
+    const id = setInterval(refreshRewards, 30000);
+    return () => clearInterval(id);
+  }, [poolInfo?.stakingInfo?.stakedAmount, refreshRewards]);
 
   // Withdraw LP tokens from staking contract
   const withdrawLPTokens = useCallback(async (amount: string) => {
@@ -610,16 +705,21 @@ export function useLPStaking(poolId: string) {
     poolInfo,
     isLoading,
     isTransacting,
+    transactionStage,
     error,
     transactionHash,
     approveToken,
     checkAllowance,
     refreshData,
+    refreshRewards,
     // LP Staking functions
     stakeLPTokens,
     withdrawLPTokens,
     claimLPRewards,
-    emergencyWithdrawLP
+    emergencyWithdrawLP,
+    requestLPWithdraw,
+    executeLPWithdraw,
+    cancelLPWithdraw
   };
 }
 

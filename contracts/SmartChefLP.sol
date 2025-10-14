@@ -5,12 +5,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /**
  * SmartChefLP — Sliding-window vesting (no per-user queues) + lock boosts.
  *
- * - Rewards stream into accTokenPerShare each block (capped by available rewardToken).
+ * - Rewards stream into accTokenPerShare each block (capped by available rewards).
  * - Claimable now = E * (accPS_at(block - delayBlocks) - user.debtClaimablePS) / PRECISION.
  * - Compact ring of accTokenPerShare checkpoints + interpolation for smooth reads.
  * - Boosts: 1.0x for 10 minutes; 1.5x for 20 minutes (you can later set 30d/90d).
@@ -18,6 +17,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
  * - On unlocked withdraw request, the exiting slice’s still-delayed amount is snapshotted
  *   as (delayedReward, delayedUnlockBlock) and unlocks later; the stake stops earning.
  * - On cancelWithdraw, that snapshot is **voided** to prevent double counting.
+ * - Rewards are paid in native token (e.g., ETH).
  */
 contract SmartChefLP is Ownable, ReentrancyGuard {
   using SafeERC20 for IERC20;
@@ -54,7 +54,6 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   uint256 public EXIT_PERIOD         = 30 days;
 
   IERC20  public lpToken;
-  IERC20  public rewardToken;
 
   // Streaming rate and timeline
   uint256 public rewardPerBlock;
@@ -64,7 +63,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   // Accounting
   bool    public hasUserLimit;
   uint256 public poolLimitPerUser;
-  uint256 public PRECISION_FACTOR;        // 1e12-ish (30 - reward decimals).
+  uint256 public PRECISION_FACTOR = 10 ** 12; // Assume 18 decimals for native → 30 - 18 = 12
   uint256 public accTokenPerShare;        // accumulated rewards per effective share
   uint256 public totalStaked;             // total LP principal (includes exit)
   uint256 public totalActiveEffective;    // sum of effective amounts currently earning
@@ -120,7 +119,6 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
 
   constructor(
     IERC20 _lpToken,
-    IERC20 _rewardToken,
     uint256 _rewardPerBlock,
     uint256 _startBlock,
     uint256 _poolLimitPerUser,
@@ -128,7 +126,6 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 _exitPeriod
   ) Ownable(msg.sender) {
     lpToken = _lpToken;
-    rewardToken = _rewardToken;
 
     rewardPerBlock  = _rewardPerBlock;
     startBlock      = _startBlock > block.number ? _startBlock : block.number;
@@ -141,10 +138,6 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
 
     REWARD_DELAY_PERIOD = _rewardDelayPeriod;
     EXIT_PERIOD         = _exitPeriod;
-
-    // Dynamic precision based on reward token decimals
-    uint8 rewardDecimals = IERC20Metadata(address(_rewardToken)).decimals();
-    PRECISION_FACTOR = 10 ** (30 - uint256(rewardDecimals));
 
     // Initial checkpoint
     lastCheckpointBlock = uint64(block.number);
@@ -163,7 +156,12 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   }
 
   function _rewardBalance() internal view returns (uint256) {
-    return rewardToken.balanceOf(address(this));
+    return address(this).balance;
+  }
+
+  function _safeTransferNative(address _to, uint256 _amount) internal {
+    (bool success, ) = _to.call{ value: _amount }("");
+    require(success, "Native transfer failed");
   }
 
   // ---------------------------
@@ -267,6 +265,9 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
    * Execute withdrawal after exit period — transfers principal and clears the exit entry.
    */
   function executeWithdraw() external nonReentrant {
+    // Auto-claim any matured rewards (unlocked snapshot and sliding-window portion)
+    // so users receive vested rewards alongside principal withdrawal.
+    _claimRewardsInternal(msg.sender, 0);
     UserInfo storage user = userInfo[msg.sender];
     require(user.withdrawRequestTime > 0, "No withdrawal requested");
     require(block.timestamp >= user.withdrawRequestTime + EXIT_PERIOD, "Exit not finished");
@@ -372,7 +373,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     require(pay >= minReward, "Slippage: reward too low");
 
     if (pay > 0) {
-      rewardToken.safeTransfer(_user, pay);
+      _safeTransferNative(_user, pay);
       totalClaimedRewards += pay;
       emit RewardClaimed(_user, pay);
     }
@@ -696,7 +697,6 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
 
   function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
     require(_tokenAddress != address(lpToken), "Cannot recover LP");
-    require(_tokenAddress != address(rewardToken), "Cannot recover reward");
     IERC20(_tokenAddress).safeTransfer(msg.sender, _tokenAmount);
     emit AdminTokenRecovery(_tokenAddress, _tokenAmount);
   }
@@ -744,17 +744,16 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     emit NewPoolLimit(poolLimitPerUser);
   }
 
-  // Fund rewards pool with reward tokens
-  function fundRewards(uint256 _amount) external onlyOwner {
-    require(_amount > 0, "Must send tokens");
-    rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
-    emit RewardsFunded(_amount);
+  // Fund rewards pool with native tokens
+  function fundRewards() external payable onlyOwner {
+    require(msg.value > 0, "Must send tokens");
+    emit RewardsFunded(msg.value);
   }
 
   // Owner can withdraw excess reward tokens (doesn't affect LP principal)
   function emergencyRewardWithdraw(uint256 _amount) external onlyOwner {
     require(_rewardBalance() >= _amount, "Insufficient reward balance");
-    rewardToken.safeTransfer(msg.sender, _amount);
+    _safeTransferNative(msg.sender, _amount);
   }
 
   function updateCheckpointInterval(uint64 _newInterval) external onlyOwner {
@@ -767,4 +766,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   // ---------------------------
 
   function updatePool() external { _updatePool(); }
+
+  receive() external payable {}
+  fallback() external payable {}
 }

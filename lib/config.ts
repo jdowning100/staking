@@ -61,7 +61,7 @@ export const LP_POOLS = {
     // Liquidity pool pair contract
     pair: LP_TOKEN_ADDRESSES['WQI-QUAI'],
     // LP Staking contract
-    stakingContract: '0x0077aeFFa0D03df8A7880f4F076F2a15b46B80Af'
+    stakingContract: '0x004d6F921aEA73D1a869fB995C068BBD3Ee09209'
   },
   'quai-usdc': {
     id: 'quai-usdc',

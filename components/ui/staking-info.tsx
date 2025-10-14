@@ -16,6 +16,7 @@ interface StakingInfoProps {
   contractInfo: ContractInfo | null;
   isLoading: boolean;
   isTransacting: boolean;
+  transactionStage?: 'idle' | 'approving' | 'staking';
   error: string | null;
   transactionHash: string | null;
   onDeposit: (amount: string, durationSeconds: number) => Promise<void>;
@@ -24,6 +25,10 @@ interface StakingInfoProps {
   onCancelWithdraw: () => Promise<void>;
   onClaimRewards: () => Promise<void>;
   onRefresh: () => void;
+  stakedSymbol?: string;
+  rewardSymbol?: string;
+  availableBalanceFormatted?: string;
+  availableBalanceLabel?: string;
 }
 
 export function StakingInfo({
@@ -31,6 +36,7 @@ export function StakingInfo({
   contractInfo,
   isLoading,
   isTransacting,
+  transactionStage,
   error,
   transactionHash,
   onDeposit,
@@ -38,13 +44,19 @@ export function StakingInfo({
   onExecuteWithdraw,
   onCancelWithdraw,
   onClaimRewards,
-  onRefresh
+  onRefresh,
+  stakedSymbol,
+  rewardSymbol,
+  availableBalanceFormatted,
+  availableBalanceLabel
 }: StakingInfoProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'rewards'>('deposit');
   const [stakePeriod, setStakePeriod] = useState<600 | 1200>(600);
+  const STAKED_SYMBOL = stakedSymbol || TOKEN_SYMBOL;
+  const REWARD_SYMBOL = rewardSymbol || TOKEN_SYMBOL;
 
   // If user already has an active position, enforce matching duration
   const existingLock = userInfo && userInfo.stakedAmount > BigInt(0) ? (userInfo.lockDurationSeconds || 0) : 0;
@@ -120,7 +132,7 @@ export function StakingInfo({
   const depositBtnContent = isTransacting ? (
     <span className="inline-flex items-center">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-      Processing...
+      {transactionStage === 'approving' ? 'Approving...' : (transactionStage === 'staking' ? 'Staking...' : 'Processing...')}
     </span>
   ) : (
     'Deposit'
@@ -308,20 +320,20 @@ export function StakingInfo({
               <div className="flex justify-between">
                 <span className="text-[#999999]">Your Stake</span>
                 <span className="font-medium text-white">
-                  {userInfo.stakedAmountFormatted} {TOKEN_SYMBOL}
+                  {userInfo.stakedAmountFormatted} {STAKED_SYMBOL}
                 </span>
               </div>
               {/* Reward Metrics */}
               <div className="flex justify-between">
                 <span className="text-[#999999]">Claimable Rewards</span>
                 <span className="font-medium text-white">
-                  {userInfo.claimableRewardsFormatted} {TOKEN_SYMBOL}
+                  {userInfo.claimableRewardsFormatted} {REWARD_SYMBOL}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#999999]">Vesting Rewards</span>
                 <span className="font-medium text-white">
-                  {userInfo.totalDelayedRewardsFormatted} {TOKEN_SYMBOL}
+                  {userInfo.totalDelayedRewardsFormatted} {REWARD_SYMBOL}
                 </span>
               </div>
               {(() => {
@@ -333,7 +345,7 @@ export function StakingInfo({
                   <div className="flex justify-between">
                     <span className="text-[#999999]">Total Rewards</span>
                     <span className="font-medium text-white">
-                      {totalEarnedFormatted} {TOKEN_SYMBOL}
+                      {totalEarnedFormatted} {REWARD_SYMBOL}
                     </span>
                   </div>
                 );
@@ -422,6 +434,22 @@ export function StakingInfo({
 
             {activeTab === 'deposit' && (
               <div className="space-y-3">
+                {availableBalanceFormatted && (
+                  <div className="flex items-center justify-between text-xs text-[#999999]">
+                    <span>{availableBalanceLabel || 'Available Balance'}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-white">{availableBalanceFormatted} {STAKED_SYMBOL}</span>
+                      <button
+                        type="button"
+                        className="px-2 py-0.5 rounded bg-[#222222] text-[#bbbbbb] hover:bg-[#2a2a2a]"
+                        onClick={() => setDepositAmount(availableBalanceFormatted)}
+                        disabled={isTransacting}
+                      >
+                        Max
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {/* Guidance for existing positions: match lock + lock reset note */}
                 {userInfo && userInfo.stakedAmount > BigInt(0) && (
                   <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-lg text-xs">
@@ -436,7 +464,7 @@ export function StakingInfo({
 
                 <Input
                   type="number"
-                  placeholder={`Amount to deposit (${TOKEN_SYMBOL})`}
+                  placeholder={`Amount to deposit (${STAKED_SYMBOL})`}
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(e.target.value)}
                   className="bg-[#222222] border-[#333333] text-white"

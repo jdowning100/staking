@@ -197,7 +197,12 @@ export default function StakePage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
-                  {isRealStaking && staking.contractInfo ? (
+                  {(isRealStaking && staking.isLoading) || (isRealLPPool && lpStaking.isLoading) ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600" />
+                      <span className="text-xs text-[#666666]">Loading...</span>
+                    </div>
+                  ) : isRealStaking && staking.contractInfo ? (
                     <span>
                       {selectedStakePeriod === 0
                         ? (staking.contractInfo.apy30 ?? staking.contractInfo.apy).toLocaleString('en-US', { maximumFractionDigits: 1 })
@@ -205,15 +210,18 @@ export default function StakePage() {
                       }%
                     </span>
                   ) : isRealLPPool && lpStaking.poolInfo?.poolMetrics ? (
-                    `${lpStaking.poolInfo.poolMetrics.apr >= 1000 ?
-                      Math.round(lpStaking.poolInfo.poolMetrics.apr).toLocaleString() :
-                      lpStaking.poolInfo.poolMetrics.apr.toFixed(1)}%`
+                    <span>
+                      {selectedStakePeriod === 0
+                        ? (lpStaking.poolInfo.poolMetrics.apy30 ?? lpStaking.poolInfo.poolMetrics.apr).toFixed(1)
+                        : (lpStaking.poolInfo.poolMetrics.apy90 ?? lpStaking.poolInfo.poolMetrics.apr).toFixed(1)
+                      }%
+                    </span>
                   ) : (
                     `${currentPeriod.apr.toFixed(1)}%`
                   )}
                 </div>
                 <div className="text-xs text-[#666666] mb-1">Stake Period / APR</div>
-                {isRealStaking && (
+                {(isRealStaking || isRealLPPool) && (
                   <div className="flex justify-center gap-1">
                     <button
                       onClick={() => setSelectedStakePeriod(0)}
@@ -242,37 +250,46 @@ export default function StakePage() {
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
-                  {isRealStaking && staking.contractInfo ?
-                    (staking.contractInfo.activeStakedFormatted ?? staking.contractInfo.totalStakedFormatted) :
-                    isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
-                      `${parseFloat(lpStaking.poolInfo.poolMetrics.totalStakedFormatted).toFixed(2)}` :
-                      formatNumber(pool.totalStaked)}
+                  {(isRealStaking && staking.isLoading) || (isRealLPPool && lpStaking.isLoading) ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600" />
+                      <span className="text-xs text-[#666666]">Loading...</span>
+                    </div>
+                  ) : (
+                    isRealStaking && staking.contractInfo ?
+                      (staking.contractInfo.activeStakedFormatted ?? staking.contractInfo.totalStakedFormatted) :
+                      isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
+                        `${parseFloat(lpStaking.poolInfo.poolMetrics.totalStakedFormatted).toFixed(2)}` :
+                        formatNumber(pool.totalStaked)
+                  )}
                 </div>
                 <div className="text-xs text-[#666666]">Active Staked</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
-                  {isRealStaking ? `${Math.floor(REWARD_DELAY_PERIOD / 60)} min` :
-                    isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
-                      lpStaking.poolInfo.poolMetrics.activePositions :
-                      `${currentPeriod.multiplier}x`}
+                  {(isRealStaking && staking.isLoading) || (isRealLPPool && lpStaking.isLoading) ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600" />
+                      <span className="text-xs text-[#666666]">Loading...</span>
+                    </div>
+                  ) : (
+                    `${Math.floor(REWARD_DELAY_PERIOD / 60)} min`
+                  )}
                 </div>
-                <div className="text-xs text-[#666666]">
-                  {isRealStaking ? "Reward Vesting" :
-                    isRealLPPool ? "Active Positions" : "Multiplier"}
-                </div>
+                <div className="text-xs text-[#666666]">Reward Vesting</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
-                  {isRealStaking ? `${Math.floor(EXIT_PERIOD / 60)} min` :
-                    isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
-                      lpStaking.poolInfo.poolMetrics.activePositions :
-                      `${currentPeriod.multiplier}x`}
+                  {(isRealStaking && staking.isLoading) || (isRealLPPool && lpStaking.isLoading) ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600" />
+                      <span className="text-xs text-[#666666]">Loading...</span>
+                    </div>
+                  ) : (
+                    `${Math.floor(EXIT_PERIOD / 60)} min`
+                  )}
                 </div>
-                <div className="text-xs text-[#666666]">
-                  {isRealStaking ? "Exit Period" :
-                    isRealLPPool ? "Active Positions" : "Multiplier"}
-                </div>
+                <div className="text-xs text-[#666666]">Exit Period</div>
               </div>
             </div>
 
@@ -372,17 +389,92 @@ export default function StakePage() {
             onCancelWithdraw={staking.cancelWithdraw}
             onClaimRewards={staking.claimRewards}
             onRefresh={staking.refreshData}
+            stakedSymbol="QUAI"
+            rewardSymbol="QUAI"
+            availableBalanceFormatted={staking.contractInfo?.userQuaiBalanceFormatted}
+            availableBalanceLabel="QUAI Balance"
           />
         ) : isRealLPPool ? (
-          /* LP Staking Flow for WQI/QUAI */
-          <LPStakingFlow
-            poolId={poolId}
-            initialMode={mode === 'manage' ? 'manage' : 'stake'}
-            onComplete={() => {
-              // Redirect back to portfolio or main page
-              window.location.href = '/portfolio';
-            }}
+          (mode === 'stake' || !(lpStaking.poolInfo?.stakingInfo && lpStaking.poolInfo.stakingInfo.stakedAmount > BigInt(0))) ? (
+            <LPStakingFlow
+              poolId={poolId}
+              initialMode={'stake'}
+              onComplete={() => {
+                // After completing staking flow, switch to manage view
+                const url = new URL(window.location.href);
+                url.searchParams.set('mode', 'manage');
+                window.location.href = url.toString();
+              }}
+            />
+          ) : (
+          <>
+            <div className="flex justify-end mb-3">
+              <Link href={`/stake/${poolId}?mode=stake`} className="text-sm text-red-400 hover:text-red-300 underline">
+                Need WQI or LP? Open LP Builder
+              </Link>
+            </div>
+            <StakingInfo
+            userInfo={lpStaking.poolInfo?.stakingInfo ? {
+              stakedAmount: lpStaking.poolInfo.stakingInfo.stakedAmount,
+              stakedAmountFormatted: lpStaking.poolInfo.stakingInfo.stakedAmountFormatted,
+              pendingRewards: lpStaking.poolInfo.stakingInfo.pendingRewards,
+              pendingRewardsFormatted: lpStaking.poolInfo.stakingInfo.pendingRewardsFormatted,
+              claimableRewards: lpStaking.poolInfo.stakingInfo.claimableRewards,
+              claimableRewardsFormatted: lpStaking.poolInfo.stakingInfo.claimableRewardsFormatted,
+              totalDelayedRewards: lpStaking.poolInfo.stakingInfo.totalDelayedRewards,
+              totalDelayedRewardsFormatted: lpStaking.poolInfo.stakingInfo.totalDelayedRewardsFormatted,
+              delayedRewards: lpStaking.poolInfo.stakingInfo.delayedRewards as any,
+              lockStartTime: lpStaking.poolInfo.stakingInfo.lockStartTime,
+              lockDurationSeconds: lpStaking.poolInfo.stakingInfo.lockDurationSeconds,
+              lockEndTime: lpStaking.poolInfo.stakingInfo.timeUntilUnlock > 0 ? Math.floor(Date.now()/1000) + lpStaking.poolInfo.stakingInfo.timeUntilUnlock : 0,
+              isLocked: lpStaking.poolInfo.stakingInfo.isLocked,
+              isInExitPeriod: lpStaking.poolInfo.stakingInfo.isInExitPeriod,
+              canRequestWithdraw: lpStaking.poolInfo.stakingInfo.canRequestWithdraw,
+              canExecuteWithdraw: lpStaking.poolInfo.stakingInfo.canExecuteWithdraw,
+              withdrawRequestTime: 0,
+              withdrawalAmount: BigInt(0),
+              withdrawalAvailableTime: 0,
+              timeUntilUnlock: lpStaking.poolInfo.stakingInfo.timeUntilUnlock,
+              timeUntilWithdrawalAvailable: lpStaking.poolInfo.stakingInfo.timeUntilWithdrawalAvailable,
+              userStatus: lpStaking.poolInfo.stakingInfo.userStatus || ''
+            } : null}
+            contractInfo={lpStaking.poolInfo?.poolMetrics ? {
+              totalStaked: lpStaking.poolInfo.poolMetrics.totalStaked,
+              totalStakedFormatted: lpStaking.poolInfo.poolMetrics.totalStakedFormatted,
+              rewardPerBlock: lpStaking.poolInfo.poolMetrics.rewardPerBlock,
+              rewardPerBlockFormatted: lpStaking.poolInfo.poolMetrics.rewardPerBlockFormatted,
+              poolLimitPerUser: BigInt(0),
+              poolLimitPerUserFormatted: '0',
+              hasUserLimit: false,
+              contractBalance: lpStaking.poolInfo.poolMetrics.rewardBalance,
+              contractBalanceFormatted: lpStaking.poolInfo.poolMetrics.rewardBalanceFormatted,
+              rewardBalance: lpStaking.poolInfo.poolMetrics.rewardBalance,
+              rewardBalanceFormatted: lpStaking.poolInfo.poolMetrics.rewardBalanceFormatted,
+              apy: lpStaking.poolInfo.poolMetrics.apr,
+              apy30: lpStaking.poolInfo.poolMetrics.apy30 ?? lpStaking.poolInfo.poolMetrics.apr,
+              apy90: lpStaking.poolInfo.poolMetrics.apy90 ?? lpStaking.poolInfo.poolMetrics.apr,
+              currentBlock: 0,
+              userQuaiBalance: BigInt(0),
+              userQuaiBalanceFormatted: '0',
+            } : null}
+            isLoading={lpStaking.isLoading}
+            isTransacting={lpStaking.isTransacting}
+            transactionStage={lpStaking.transactionStage}
+            error={lpStaking.error}
+            transactionHash={lpStaking.transactionHash}
+            onDeposit={(amount: string, durationSeconds: number) => lpStaking.stakeLPTokens(amount, durationSeconds)}
+            onRequestWithdraw={lpStaking.requestLPWithdraw}
+            onExecuteWithdraw={lpStaking.executeLPWithdraw}
+            onCancelWithdraw={lpStaking.cancelLPWithdraw}
+            onClaimRewards={lpStaking.claimLPRewards}
+            onRefresh={lpStaking.refreshData}
+            stakedSymbol="LP"
+            rewardSymbol="QUAI"
+            availableBalanceFormatted={lpStaking.poolInfo?.userLPBalanceFormatted}
+            availableBalanceLabel="LP Balance"
           />
+          </>
+          )
         ) : (
           /* Placeholder for inactive pools */
           <Card className="modern-card">

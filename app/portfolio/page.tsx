@@ -313,12 +313,14 @@ export default function Portfolio() {
     });
   };
 
-  const getDaysRemaining = (endDate: string) => {
-    const end = new Date(endDate);
-    const now = new Date();
-    const diffTime = end.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return Math.max(0, diffDays);
+  const formatTimeLeft = (seconds: number) => {
+    if (!seconds || seconds <= 0) return 'Ready';
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
   };
 
   // Calculate totals - use real data for native QUAI, mock for others
@@ -379,11 +381,17 @@ export default function Portfolio() {
       totalDelayedRewards: lpDelayedTotal,
       pendingRewards: lpPending,
       apr: realLPApr,
-      lockPeriod: wqiQuaiLPStaking.poolInfo?.stakingInfo?.isLocked ? 30 : null,
-      endDate: wqiQuaiLPStaking.poolInfo?.stakingInfo?.lockStartTime ?
-        new Date((wqiQuaiLPStaking.poolInfo.stakingInfo.lockStartTime + 30 * 24 * 60 * 60) * 1000).toISOString().split('T')[0] :
-        null,
-      isReal: true
+      lockPeriod: wqiQuaiLPStaking.poolInfo?.stakingInfo?.isLocked ? 0 : null,
+      endDate: (() => {
+        const t = wqiQuaiLPStaking.poolInfo?.stakingInfo?.timeUntilUnlock || 0;
+        return t > 0 ? new Date(Date.now() + t * 1000).toISOString().split('T')[0] : null;
+      })(),
+      isReal: true,
+      userStatus: wqiQuaiLPStaking.poolInfo?.stakingInfo?.userStatus || 'Unknown',
+      isInExitPeriod: wqiQuaiLPStaking.poolInfo?.stakingInfo?.isInExitPeriod || false,
+      canExecuteWithdraw: wqiQuaiLPStaking.poolInfo?.stakingInfo?.canExecuteWithdraw || false,
+      timeUntilWithdrawalAvailable: wqiQuaiLPStaking.poolInfo?.stakingInfo?.timeUntilWithdrawalAvailable || 0,
+      timeUntilUnlock: wqiQuaiLPStaking.poolInfo?.stakingInfo?.timeUntilUnlock || 0
     });
   }
 
@@ -539,7 +547,9 @@ export default function Portfolio() {
 
           <div className="space-y-4">
             {activePositions.map((position, index) => {
-              const daysRemaining = position.endDate ? getDaysRemaining(position.endDate) : null;
+              const nowSec = Math.floor(Date.now() / 1000);
+              const endTs = position.endDate ? Math.floor(new Date(position.endDate).getTime() / 1000) : 0;
+              const secondsLeft = endTs > nowSec ? (endTs - nowSec) : (position.timeUntilUnlock ?? 0) || 0;
 
               return (
                 <Card key={index} className="modern-card">
@@ -656,17 +666,22 @@ export default function Portfolio() {
                       </div>
 
                       <div className="text-center p-3 bg-[#0a0a0a] rounded-lg flex flex-col justify-center">
-                        {daysRemaining !== null ? (
+                        {position.isInExitPeriod ? (
                           <>
-                            <div className="text-lg font-bold text-white">{daysRemaining}</div>
-                            <div className="text-xs text-[#999999]">Days Left</div>
+                            <div className="text-lg font-bold text-white">{formatTimeLeft(position.timeUntilWithdrawalAvailable || 0)}</div>
+                            <div className="text-xs text-[#999999]">Exit Window</div>
+                          </>
+                        ) : (secondsLeft > 0 ? (
+                          <>
+                            <div className="text-lg font-bold text-white">{formatTimeLeft(secondsLeft)}</div>
+                            <div className="text-xs text-[#999999]">Until Unlock</div>
                           </>
                         ) : (
                           <>
-                            <div className="text-lg font-bold text-orange-400">Flexible</div>
-                            <div className="text-xs text-[#999999]">No Lock</div>
+                            <div className="text-lg font-bold text-green-400">Unlocked</div>
+                            <div className="text-xs text-[#999999]">Status</div>
                           </>
-                        )}
+                        ))}
                       </div>
                     </div>
 

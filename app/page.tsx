@@ -555,13 +555,14 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                   /* LP Pool APR Display */
                   hasRealLPData ? (
                     lpStakingData.poolMetrics ? (
-                      <>
-                        <span className="text-xl font-bold text-white">
-                          {lpStakingData.poolMetrics.apr >= 1000 ?
-                            Math.round(lpStakingData.poolMetrics.apr).toLocaleString() :
-                            lpStakingData.poolMetrics.apr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%
-                        </span>
-                      </>
+                      (() => {
+                        const apyVal = selectedPeriod === 0
+                          ? (lpStakingData.poolMetrics.apy30 ?? lpStakingData.poolMetrics.apr)
+                          : (lpStakingData.poolMetrics.apy90 ?? lpStakingData.poolMetrics.apr);
+                        return (
+                          <span className="text-xl font-bold text-white">{apyVal.toLocaleString('en-US', { maximumFractionDigits: 1 })}%</span>
+                        );
+                      })()
                     ) : (
                       <div className="flex items-center gap-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
@@ -606,7 +607,16 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
             </div>
             <div className="text-sm font-semibold text-white mb-1">Reward Vesting & Exit Window</div>
             <div className="text-xs text-[#999999]">
-              {Math.floor(REWARD_DELAY_PERIOD / 60)}m reward vesting • {Math.floor(EXIT_PERIOD / 60)}m exit window
+              {isNativeQuai && isStakingLoading ? (
+                <span className="inline-flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b border-red-600"></div>
+                  Loading...
+                </span>
+              ) : (
+                <>
+                  {Math.floor(REWARD_DELAY_PERIOD / 60)}m reward vesting • {Math.floor(EXIT_PERIOD / 60)}m exit window
+                </>
+              )}
             </div>
           </div>
         ) : (
@@ -698,7 +708,8 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                 </div>
               </div>
             </div>
-            {userStake.lockPeriod && (
+            {/* Show lock info only for native QUAI, not LP */}
+            {isNativeQuai && userStake.lockPeriod && (
               <div className="text-xs text-[#999999] mt-3 pt-3 border-t border-red-900/20">
                 🔒 Locked for {userStake.lockPeriod} days • Ends {userStake.endDate}
               </div>
