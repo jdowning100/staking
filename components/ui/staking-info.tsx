@@ -46,6 +46,11 @@ export function StakingInfo({
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'rewards'>('deposit');
   const [stakePeriod, setStakePeriod] = useState<600 | 1200>(600);
 
+  // If user already has an active position, enforce matching duration
+  const existingLock = userInfo && userInfo.stakedAmount > BigInt(0) ? (userInfo.lockDurationSeconds || 0) : 0;
+  const mustMatchExisting = existingLock === 600 || existingLock === 1200;
+  const isMismatchedSelection = mustMatchExisting && stakePeriod !== existingLock;
+
   const handleDeposit = async () => {
     if (!depositAmount || parseFloat(depositAmount) <= 0) return;
     await onDeposit(depositAmount, stakePeriod);
@@ -417,6 +422,18 @@ export function StakingInfo({
 
             {activeTab === 'deposit' && (
               <div className="space-y-3">
+                {/* Guidance for existing positions: match lock + lock reset note */}
+                {userInfo && userInfo.stakedAmount > BigInt(0) && (
+                  <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-lg text-xs">
+                    <p>
+                      You already have an active position locked for {existingLock === 1200 ? '20m' : '10m'}. Top-ups must match your current lock.
+                    </p>
+                    <p className="mt-1">
+                      Adding to your position resets your lock start to now for the same period, and any matured rewards are auto‑claimed before the top‑up.
+                    </p>
+                  </div>
+                )}
+
                 <Input
                   type="number"
                   placeholder={`Amount to deposit (${TOKEN_SYMBOL})`}
@@ -430,27 +447,30 @@ export function StakingInfo({
                   <div className="flex justify-center gap-1 mb-3">
                     <button
                       onClick={() => setStakePeriod(600)}
+                      disabled={mustMatchExisting && existingLock !== 600}
                       className={cn(
                         "px-2 py-0.5 rounded text-xs font-medium transition-colors",
-                        stakePeriod === 600
-                          ? "bg-red-900/50 text-white border border-red-700"
-                          : "bg-[#222222] text-[#666666] hover:text-[#999999]"
+                        stakePeriod === 600 ?
+                          (mustMatchExisting && existingLock !== 600 ? "bg-[#222222] text-[#555555] border border-[#333333]" : "bg-red-900/50 text-white border border-red-700") :
+                          (mustMatchExisting && existingLock !== 600 ? "bg-[#1c1c1c] text-[#444444] cursor-not-allowed" : "bg-[#222222] text-[#666666] hover:text-[#999999]")
                       )}
                     >
                       10m
                     </button>
                     <button
                       onClick={() => setStakePeriod(1200)}
+                      disabled={mustMatchExisting && existingLock !== 1200}
                       className={cn(
                         "px-2 py-0.5 rounded text-xs font-medium transition-colors",
-                        stakePeriod === 1200
-                          ? "bg-red-900/50 text-white border border-red-700"
-                          : "bg-[#222222] text-[#666666] hover:text-[#999999]"
+                        stakePeriod === 1200 ?
+                          (mustMatchExisting && existingLock !== 1200 ? "bg-[#222222] text-[#555555] border border-[#333333]" : "bg-red-900/50 text-white border border-red-700") :
+                          (mustMatchExisting && existingLock !== 1200 ? "bg-[#1c1c1c] text-[#444444] cursor-not-allowed" : "bg-[#222222] text-[#666666] hover:text-[#999999]")
                       )}
                     >
                       20m
                     </button>
                   </div>
+                  {/* warnings moved above amount input */}
                   
                   {/* Stake Information */}
                   {depositAmount && parseFloat(depositAmount) > 0 && (
@@ -546,7 +566,13 @@ export function StakingInfo({
                 </div>
                 <Button
                   onClick={handleDeposit}
-                  disabled={isTransacting || !depositAmount || parseFloat(depositAmount) <= 0 || userInfo?.isInExitPeriod}
+                  disabled={
+                    isTransacting ||
+                    !depositAmount ||
+                    parseFloat(depositAmount) <= 0 ||
+                    userInfo?.isInExitPeriod ||
+                    isMismatchedSelection
+                  }
                   className="w-full bg-red-9 hover:bg-red-10 text-white"
                 >
                   {isTransacting ? (

@@ -366,7 +366,7 @@ export default function StakePage() {
             isTransacting={staking.isTransacting}
             error={staking.error}
             transactionHash={staking.transactionHash}
-            onDeposit={(amount: string) => staking.deposit(amount, selectedStakePeriod === 0 ? 600 : 1200)}
+            onDeposit={(amount: string, durationSeconds: number) => staking.deposit(amount, durationSeconds)}
             onRequestWithdraw={staking.requestWithdraw}
             onExecuteWithdraw={staking.executeWithdraw}
             onCancelWithdraw={staking.cancelWithdraw}

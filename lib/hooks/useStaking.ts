@@ -26,6 +26,7 @@ export interface DelayedReward {
 export interface UserStakingInfo {
   stakedAmount: bigint;
   stakedAmountFormatted: string;
+  lockDurationSeconds?: number;
   pendingRewards: bigint;
   pendingRewardsFormatted: string;
   claimableRewards: bigint;
@@ -259,6 +260,7 @@ export function useStaking() {
           stakedAmount = userInfoResult.stakedAmount || BigInt(0);
           lockStartTime = userInfoResult.lockStartTime ? Number(userInfoResult.lockStartTime) : 0;
           extendedInfo.lockEndTime = userInfoResult.lockEndTime ? Number(userInfoResult.lockEndTime) : 0;
+          extendedInfo.lockDurationSeconds = userInfoResult.lockDuration ? Number(userInfoResult.lockDuration) : 0;
           extendedInfo.withdrawRequestTime = userInfoResult.withdrawRequestTime ? Number(userInfoResult.withdrawRequestTime) : 0;
           extendedInfo.withdrawalAmount = userInfoResult.withdrawalAmount || BigInt(0);
           extendedInfo.withdrawalAvailableTime = userInfoResult.withdrawalAvailableTime ? Number(userInfoResult.withdrawalAvailableTime) : 0;
@@ -395,6 +397,7 @@ export function useStaking() {
       setUserInfo({
         stakedAmount,
         stakedAmountFormatted: formatBalance(formatQuai(stakedAmount)),
+        lockDurationSeconds: extendedInfo.lockDurationSeconds,
         pendingRewards,
         pendingRewardsFormatted: formatBalance(formatQuai(pendingRewards)),
         claimableRewards: finalClaimableAmount,
