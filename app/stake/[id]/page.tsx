@@ -243,12 +243,12 @@ export default function StakePage() {
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
                   {isRealStaking && staking.contractInfo ?
-                    staking.contractInfo.totalStakedFormatted :
+                    (staking.contractInfo.activeStakedFormatted ?? staking.contractInfo.totalStakedFormatted) :
                     isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
                       `${parseFloat(lpStaking.poolInfo.poolMetrics.totalStakedFormatted).toFixed(2)}` :
                       formatNumber(pool.totalStaked)}
                 </div>
-                <div className="text-xs text-[#666666]">Total Staked</div>
+                <div className="text-xs text-[#666666]">Active Staked</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">

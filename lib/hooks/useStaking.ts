@@ -1,8 +1,9 @@
 import { Contract, JsonRpcProvider, Shard, formatQuai, parseQuai } from 'quais';
 import { useContext, useState, useEffect, useCallback } from 'react';
 import { StateContext } from '@/store';
-import SmartChefNativeArtifact from '@/lib/SmartChefNative.json';
-const SmartChefNativeABI = SmartChefNativeArtifact.abi;
+// Use the up-to-date ABI from Hardhat artifacts to match the latest contract
+import SmartChefNativeArtifact from '@/artifacts/contracts/SmartChefNative.sol/SmartChefNative.json';
+const SmartChefNativeABI = (SmartChefNativeArtifact as any).abi;
 import { RPC_URL, STAKING_CONTRACT_ADDRESS, LOCK_PERIOD, REWARD_DELAY_PERIOD, EXIT_PERIOD, GRACE_PERIOD, SECONDS_PER_BLOCK } from '@/lib/config';
 
 // Re-export formatQuai for use in other components
@@ -50,10 +51,12 @@ export interface UserStakingInfo {
 export interface ContractInfo {
   totalStaked: bigint;
   totalStakedFormatted: string;
+  totalInExitPeriod?: bigint;
+  totalInExitPeriodFormatted?: string;
+  activeStaked?: bigint;
+  activeStakedFormatted?: string;
   rewardPerBlock: bigint;
   rewardPerBlockFormatted: string;
-  emissionRate?: bigint;
-  emissionRateFormatted?: string;
   poolLimitPerUser: bigint;
   poolLimitPerUserFormatted: string;
   hasUserLimit: boolean;
@@ -105,7 +108,7 @@ export function useStaking() {
       // Get contract info with error handling
       let totalStaked = BigInt(0);
       let rewardPerBlock = BigInt(0);
-      let emissionRate = BigInt(0);
+      let totalInExitPeriod = BigInt(0);
       let poolLimitPerUser = BigInt(0);
       let hasUserLimit = false;
       let contractBalance = BigInt(0);
@@ -117,13 +120,11 @@ export function useStaking() {
         console.warn('Failed to get total staked:', e);
       }
 
-      // Read emissionRate (streaming) and derive per-block estimate
+      // Read rewardPerBlock directly from contract
       try {
-        emissionRate = await stakingContract.emissionRate();
-        const perBlock = emissionRate * BigInt(SECONDS_PER_BLOCK);
-        rewardPerBlock = perBlock;
+        rewardPerBlock = await stakingContract.rewardPerBlock();
       } catch (e) {
-        // ignore if not available
+        console.warn('Failed to get rewardPerBlock:', e);
       }
 
       try {
@@ -145,6 +146,15 @@ export function useStaking() {
         console.warn('Failed to get reward balance:', e);
       }
 
+      // Exit queue amount (to derive active staked)
+      try {
+        totalInExitPeriod = await stakingContract.totalInExitPeriod();
+      } catch (e) {
+        console.warn('Failed to get totalInExitPeriod:', e);
+      }
+
+      const activeStaked = totalStaked - totalInExitPeriod;
+
       // Debug: Check actual contract periods
       try {
         const exitPeriod = await stakingContract.EXIT_PERIOD();
@@ -165,10 +175,12 @@ export function useStaking() {
       setContractInfo({
         totalStaked,
         totalStakedFormatted: formatBalance(formatQuai(totalStaked)),
+        totalInExitPeriod,
+        totalInExitPeriodFormatted: formatBalance(formatQuai(totalInExitPeriod)),
+        activeStaked,
+        activeStakedFormatted: formatBalance(formatQuai(activeStaked)),
         rewardPerBlock,
         rewardPerBlockFormatted: formatBalance(formatQuai(rewardPerBlock)),
-        emissionRate,
-        emissionRateFormatted: formatBalance(formatQuai(emissionRate)),
         poolLimitPerUser,
         poolLimitPerUserFormatted: formatBalance(formatQuai(poolLimitPerUser)),
         hasUserLimit,
@@ -327,25 +339,21 @@ export function useStaking() {
       // Get contract info with error handling
       let totalStaked = BigInt(0);
       let rewardPerBlock = BigInt(0);
-      let emissionRate = BigInt(0);
       let poolLimitPerUser = BigInt(0);
       let hasUserLimit = false;
       let contractBalance = BigInt(0);
       let rewardBalance = BigInt(0);
 
-      try {
-        totalStaked = await stakingContract.totalStaked();
-      } catch (e) {
-        console.warn('Failed to get total staked:', e);
-      }
+      try { totalStaked = await stakingContract.totalStaked(); } catch (e) { console.warn('Failed to get total staked:', e); }
+      let totalInExitPeriod = BigInt(0);
+      try { totalInExitPeriod = await stakingContract.totalInExitPeriod(); } catch (e) { console.warn('Failed to get totalInExitPeriod:', e); }
+      const activeStaked = totalStaked - totalInExitPeriod;
 
-      // Read emissionRate (streaming) and derive per-block estimate
+      // Read rewardPerBlock directly from contract
       try {
-        emissionRate = await stakingContract.emissionRate();
-        const perBlock = emissionRate * BigInt(SECONDS_PER_BLOCK);
-        rewardPerBlock = perBlock;
+        rewardPerBlock = await stakingContract.rewardPerBlock();
       } catch (e) {
-        // ignore if not available
+        console.warn('Failed to get rewardPerBlock:', e);
       }
 
       try {
@@ -413,10 +421,12 @@ export function useStaking() {
       setContractInfo({
         totalStaked,
         totalStakedFormatted: formatBalance(formatQuai(totalStaked)),
+        totalInExitPeriod,
+        totalInExitPeriodFormatted: formatBalance(formatQuai(totalInExitPeriod)),
+        activeStaked,
+        activeStakedFormatted: formatBalance(formatQuai(activeStaked)),
         rewardPerBlock,
         rewardPerBlockFormatted: formatBalance(formatQuai(rewardPerBlock)),
-        emissionRate,
-        emissionRateFormatted: formatBalance(formatQuai(emissionRate)),
         poolLimitPerUser,
         poolLimitPerUserFormatted: formatBalance(formatQuai(poolLimitPerUser)),
         hasUserLimit,
@@ -724,7 +734,7 @@ export function useStaking() {
 
   // Note: Emergency withdraw has been removed from the new contract
 
-  // Refresh only pending rewards (lightweight update)
+  // Refresh rewards periodically: update pending, claimable, and delayed totals
   const refreshRewards = useCallback(async () => {
     if (!account?.addr || !userInfo || userInfo.stakedAmount === BigInt(0)) return;
 
@@ -732,12 +742,41 @@ export function useStaking() {
       const provider = new JsonRpcProvider(RPC_URL);
       const stakingContract = new Contract(STAKING_CONTRACT_ADDRESS, SmartChefNativeABI, provider);
 
-      const pendingRewards = await stakingContract.pendingReward(account.addr);
+      const [pendingRewards, claimable, locked] = await Promise.all([
+        stakingContract.pendingReward(account.addr),
+        stakingContract.claimableView(account.addr).catch(() => BigInt(0)),
+        stakingContract.lockedView(account.addr).catch(() => BigInt(0)),
+      ]);
+
+      // Rebuild synthetic delayed entries for display
+      const syntheticDelayed: DelayedReward[] = [];
+      if (claimable > BigInt(0)) {
+        syntheticDelayed.push({
+          amount: claimable,
+          unlockTime: Math.floor(Date.now() / 1000) - 1,
+          amountFormatted: formatBalance(formatQuai(claimable)),
+          timeUntilUnlock: 0,
+        });
+      }
+      const lockedPortion = locked > claimable ? (locked - claimable) : BigInt(0);
+      if (lockedPortion > BigInt(0)) {
+        syntheticDelayed.push({
+          amount: lockedPortion,
+          unlockTime: Math.floor(Date.now() / 1000) + REWARD_DELAY_PERIOD,
+          amountFormatted: formatBalance(formatQuai(lockedPortion)),
+          timeUntilUnlock: REWARD_DELAY_PERIOD,
+        });
+      }
 
       setUserInfo(prev => prev ? {
         ...prev,
         pendingRewards,
         pendingRewardsFormatted: formatBalance(formatQuai(pendingRewards)),
+        claimableRewards: claimable,
+        claimableRewardsFormatted: formatBalance(formatQuai(claimable)),
+        totalDelayedRewards: locked,
+        totalDelayedRewardsFormatted: formatBalance(formatQuai(locked)),
+        delayedRewards: syntheticDelayed,
       } : null);
     } catch (error) {
       console.warn('Failed to refresh rewards:', error);

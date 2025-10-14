@@ -4,64 +4,76 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+/**
+ * Sliding-window vesting via accTokenPerShare checkpoints.
+ * - Users have a "baseline" per-share (debtClaimablePS). What’s claimable now is
+ *   E * (accPS_at(block - delay) - baseline). No writes are needed to *view* it.
+ * - We keep a small ring of checkpoints and INTERPOLATE between them for smooth vesting.
+ * - Early exits are DISALLOWED. Unlocked exits move stake into an exit queue; rewards
+ *   already streamed but inside the delay window keep vesting "virtually" and are captured
+ *   at request time into (delayedReward, delayedUnlockBlock) so users can still claim them
+ *   after they unlock, even though their stake stopped earning further.
+ */
 contract SmartChefNative is Ownable, ReentrancyGuard {
-  // Info of each user
+  // ---------------------------
+  // User data
+  // ---------------------------
   struct UserInfo {
-    uint256 amount; // Staked native tokens (principal)
-    uint256 effectiveAmount; // Effective amount for rewards (amount * multiplier)
-    uint256 rewardDebt; // Reward debt
-    uint256 debtClaimablePS; // Baseline acc per share for claimable view
-    uint256 lockStartTime; // When the lock period began
-    uint256 lockDuration; // User's chosen lock duration (10 or 20 minutes)
-    uint256 withdrawRequestTime; // When withdrawal was requested (0 if none)
-    uint256 withdrawalAmount; // Amount requested for withdrawal
-    uint256 delayedReward; // Delayed reward for exiting portion
-    uint256 delayedUnlockTime; // Unlock time for delayed reward
+    uint256 amount;              // principal
+    uint256 effectiveAmount;     // amount * multiplier
+    uint256 rewardDebt;          // for pendingReward()
+    uint256 debtClaimablePS;     // baseline for sliding-window claimable view
+    uint256 lockStartBlock;
+    uint256 lockDuration;        // seconds
+    uint256 lockDurationBlocks;  // derived from blockTime
+    uint256 withdrawRequestBlock;
+    uint256 withdrawalAmount;
+
+    // exiting portion's delayed pipeline snapshot (for unlocked exits)
+    uint256 delayedReward;       // fixed sum that unlocks later
+    uint256 delayedUnlockBlock;  // when delayedReward becomes claimable
   }
 
-  // Configurable periods
+  // ---------------------------
+  // Config
+  // ---------------------------
   uint256 public REWARD_DELAY_PERIOD = 10 minutes;
-  uint256 public EXIT_PERIOD = 10 minutes;
+  uint256 public EXIT_PERIOD         = 10 minutes;
+  uint256 public rewardPerBlock;
+  uint256 public startBlock;
+  uint256 public lastRewardBlock;
+  uint256 public blockTime = 5; // seconds
 
-  // Emission rate (tokens per second) streamed to stakers
-  uint256 public emissionRate; // QUAI per second
+  bool     public hasUserLimit;
+  uint256  public poolLimitPerUser;
+  uint256  public PRECISION_FACTOR; // 1e12+ scale for per-share math (here 1e12)
 
-  // Whether a limit is set for users
-  bool public hasUserLimit;
-  // Accrued token per share
-  uint256 public accTokenPerShare;
-  // The pool limit (0 if none)
-  uint256 public poolLimitPerUser;
-  // Precision factor for reward calculations
-  uint256 public PRECISION_FACTOR;
-  // Total amount staked (includes amounts in exit) - principal
-  uint256 public totalStaked;
-  // Total active effective amount for reward distribution
-  uint256 public totalActiveEffective;
-  // Cumulative rewards accrued to accTokenPerShare (unscaled)
-  uint256 public totalAccruedRewards;
-  // Cumulative rewards claimed by users
-  uint256 public totalClaimedRewards;
-  // Last time the pool was updated
-  uint256 public lastUpdateTimestamp;
+  // ---------------------------
+  // Pool state
+  // ---------------------------
+  uint256 public accTokenPerShare;      // scaled by PRECISION_FACTOR
+  uint256 public totalStaked;           // principal (includes exit)
+  uint256 public totalActiveEffective;  // active effective (denominator)
+  uint256 public totalInExitPeriod;     // principal in exit queue (not earning)
+  uint256 public totalAccruedRewards;   // sum streamed into accPS
+  uint256 public totalClaimedRewards;   // sum paid out
 
-  // Info of each user that stakes tokens
   mapping(address => UserInfo) public userInfo;
 
-  // Total amount in exit period (requested withdrawals not yet executed) - principal
-  uint256 public totalInExitPeriod;
-
   // ---------------------------
-  // Virtual delayed via checkpoints (Option B)
+  // Checkpoint ring for sliding window (accTokenPerShare timeline)
   // ---------------------------
-  struct Checkpoint { uint64 ts; uint256 acc; }
+  struct Checkpoint { uint64 blockNum; uint256 acc; }
   uint16 internal constant MAX_CHECKPOINTS = 256;
   mapping(uint16 => Checkpoint) internal _checkpoints;
-  uint16 internal _cpHead; // last written index
-  uint16 internal _cpSize; // number of valid checkpoints
-  uint64 public checkpointInterval = 30; // seconds
-  uint64 internal lastCheckpointTs;
+  uint16 internal _cpHead;        // last written index
+  uint16 internal _cpSize;        // number of valid checkpoints
+  uint64 public  checkpointInterval = 6; // ~30s at 5s/block
+  uint64 internal lastCheckpointBlock;
 
+  // ---------------------------
+  // Events
+  // ---------------------------
   event Deposit(address indexed user, uint256 amount, uint256 duration);
   event WithdrawRequested(address indexed user, uint256 amount, uint256 availableTime);
   event WithdrawExecuted(address indexed user, uint256 amount);
@@ -70,205 +82,211 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   event AdminTokenRecovery(address tokenRecovered, uint256 amount);
   event RewardsFunded(uint256 amount);
   event PeriodsUpdated(uint256 rewardDelayPeriod, uint256 exitPeriod);
-  event EmissionRateUpdated(uint256 newRate);
+  event NewRewardPerBlock(uint256 newRate);
+  event BlockTimeUpdated(uint256 oldBlockTime, uint256 newBlockTime);
 
   constructor(
     uint256 _poolLimitPerUser,
     uint256 _rewardDelayPeriod,
-    uint256 _exitPeriod
+    uint256 _exitPeriod,
+    uint256 _rewardPerBlock,
+    uint256 _startBlock
   ) Ownable(msg.sender) {
     if (_poolLimitPerUser > 0) {
       hasUserLimit = true;
       poolLimitPerUser = _poolLimitPerUser;
     }
-    // Set configurable periods
     REWARD_DELAY_PERIOD = _rewardDelayPeriod;
-    EXIT_PERIOD = _exitPeriod;
-    // Native token has 18 decimals
+    EXIT_PERIOD         = _exitPeriod;
+
+    // Native has 18 decimals; target 30-decimal internal precision
     PRECISION_FACTOR = 10 ** (30 - 18);
-    lastUpdateTimestamp = block.timestamp;
-    lastCheckpointTs = uint64(block.timestamp);
-    // Initial checkpoint
-    _pushCheckpoint(uint64(block.timestamp), 0);
+
+    rewardPerBlock  = _rewardPerBlock;
+    startBlock      = _startBlock > block.number ? _startBlock : block.number;
+    lastRewardBlock = startBlock;
+
+    lastCheckpointBlock = uint64(block.number);
+    _pushCheckpoint(uint64(block.number), 0); // initial
   }
 
   // ---------------------------
-  // Internal helpers
+  // Internals: helpers
   // ---------------------------
-
-  // Get boost multiplier based on duration (1x for 10min, 1.5x for 20min)
   function _getBoostMultiplier(uint256 _duration) internal pure returns (uint256) {
     if (_duration == 10 minutes) return 1e18;
     if (_duration == 20 minutes) return 1500000000000000000; // 1.5e18
     revert("Invalid duration");
   }
 
-  // Only principal NOT in exit (for APY calculations)
   function _activePrincipal() internal view returns (uint256) {
     return totalStaked - totalInExitPeriod;
   }
 
-  // Active effective for denominator in reward accrual
   function _activeEffective() internal view returns (uint256) {
     return totalActiveEffective;
   }
 
-  // Reward balance = contract balance minus principal reserves (totalStaked)
   function _rewardBalance() internal view returns (uint256) {
     uint256 bal = address(this).balance;
     return bal > totalStaked ? bal - totalStaked : 0;
   }
 
   // ---------------------------
-  // Core staking logic
+  // Core staking
   // ---------------------------
-
-  // Deposit native tokens with chosen duration and delay rewards
   function deposit(uint256 _duration) external payable nonReentrant {
-    require(_duration == 10 minutes || _duration == 20 minutes, "Invalid duration: must be 10 or 20 minutes");
+    require(_duration == 10 minutes || _duration == 20 minutes, "Invalid duration");
     UserInfo storage user = userInfo[msg.sender];
     uint256 _amount = msg.value;
-    require(_amount > 0, "Deposit amount must be greater than 0");
-    require(user.withdrawRequestTime == 0, "Cannot deposit during exit period");
+    require(_amount > 0, "Zero deposit");
+    require(user.withdrawRequestBlock == 0, "In exit period");
 
     if (hasUserLimit) {
-      require(_amount + user.amount <= poolLimitPerUser, "User amount above limit");
+      require(_amount + user.amount <= poolLimitPerUser, "Above limit");
     }
 
     _updatePool();
 
-    // Claim any available rewards before adjusting effective amount
     if (user.amount > 0) {
-      _claimRewards(msg.sender);
-      require(_duration == user.lockDuration, "Duration must match existing lock");
+      _claimRewardsInternal(msg.sender); // pay any matured pipeline + move baseline
+      require(_duration == user.lockDuration, "Duration mismatch");
     } else {
       user.lockDuration = _duration;
-      // Initialize claimable baseline to avoid gifting historical rewards
-      user.debtClaimablePS = _accPSAt(uint64(block.timestamp - REWARD_DELAY_PERIOD));
+      // set baseline to delayed frontier now
+      uint256 delayBlocks = REWARD_DELAY_PERIOD / blockTime;
+      uint256 tBlock = block.number > delayBlocks ? block.number - delayBlocks : 0;
+      user.debtClaimablePS = _accPSAtBlock(uint64(tBlock));
     }
 
-    uint256 multiplier = _getBoostMultiplier(user.lockDuration);
-    uint256 addEffective = (_amount * multiplier) / 1e18;
-    user.effectiveAmount += addEffective;
-    totalActiveEffective += addEffective;
+    uint256 mult = _getBoostMultiplier(_duration);
+    uint256 addEff = (_amount * mult) / 1e18;
+
+    user.effectiveAmount += addEff;
+    totalActiveEffective += addEff;
+
     user.amount += _amount;
     totalStaked += _amount;
-    user.lockStartTime = block.timestamp; // Reset lock on deposit/top-up
+
+    user.lockStartBlock     = block.number;
+    user.lockDurationBlocks = _duration / blockTime;
 
     user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
     emit Deposit(msg.sender, _amount, _duration);
   }
 
-  // Request withdrawal - starts exit period (stake stops earning and moves out of denominator)
+  // Only allow withdrawal request when unlocked (NO EARLY EXITS)
   function requestWithdraw(uint256 _amount) external nonReentrant {
     UserInfo storage user = userInfo[msg.sender];
-    require(user.amount >= _amount, "Amount to withdraw too high");
-    require(user.lockStartTime > 0, "No active stake");
-    require(user.withdrawRequestTime == 0, "Withdrawal already requested");
-    require(_amount > 0, "Amount must be greater than 0");
+    require(_amount > 0 && user.amount >= _amount, "Bad amount");
+    require(user.lockStartBlock > 0, "No stake");
+    require(user.withdrawRequestBlock == 0, "Already requested");
+    require(block.number >= user.lockStartBlock + user.lockDurationBlocks, "Stake locked");
 
-    // Distribute up to now with current active set
     _updatePool();
 
-    bool userIsLocked = block.timestamp < user.lockStartTime + user.lockDuration;
+    // Claim matured pipeline up to now BEFORE removing effective from denominator
+    _claimRewardsInternal(msg.sender);
 
+    // Snapshot the delayed portion for the exiting amount so it can still mature and be claimed later.
     uint256 exitEffective = (_amount * _getBoostMultiplier(user.lockDuration)) / 1e18;
 
-    if (!userIsLocked) {
-      // Claim available rewards before reducing effective
-      _claimRewards(msg.sender);
-      // Capture the locked rewards for the exiting portion
-      uint256 accPast = _accPSAt(uint64(block.timestamp - REWARD_DELAY_PERIOD));
-      uint256 delta = accTokenPerShare - accPast;
-      uint256 exitLocked = (exitEffective * delta) / PRECISION_FACTOR;
+    uint256 delayBlocks = REWARD_DELAY_PERIOD / blockTime;
+    uint256 tBlock = block.number > delayBlocks ? block.number - delayBlocks : 0;
+    uint256 accPast = _accPSAtBlock(uint64(tBlock));
+    uint256 deltaPS = accTokenPerShare - accPast;
+    if (deltaPS > 0) {
+      uint256 exitLocked = (exitEffective * deltaPS) / PRECISION_FACTOR;
       user.delayedReward += exitLocked;
-      user.delayedUnlockTime = block.timestamp + REWARD_DELAY_PERIOD;
+      user.delayedUnlockBlock = block.number + delayBlocks;
     }
-    // Early withdrawal: rewards forfeited by design
 
     // Remove from active
     user.effectiveAmount -= exitEffective;
     totalActiveEffective -= exitEffective;
 
-    // Move requested amount into "exit" so it no longer counts in denominator
-    user.withdrawRequestTime = block.timestamp;
-    user.withdrawalAmount = _amount;
-    totalInExitPeriod += _amount;
+    // Move principal into exit queue
+    user.withdrawRequestBlock = block.number;
+    user.withdrawalAmount     = _amount;
+    totalInExitPeriod        += _amount;
 
-    // Stop earning rewards by setting rewardDebt to current accumulated for remaining
     user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
 
     uint256 availableTime = block.timestamp + EXIT_PERIOD;
     emit WithdrawRequested(msg.sender, _amount, availableTime);
   }
 
-  // Execute withdrawal after exit period (principal only)
   function executeWithdraw() external nonReentrant {
     _updatePool();
+    // Auto-claim any matured rewards (unlocked snapshot and sliding-window portion)
+    // so users receive vested rewards alongside principal withdrawal.
+    _claimRewardsInternal(msg.sender);
     UserInfo storage user = userInfo[msg.sender];
-    require(user.withdrawRequestTime > 0, "No withdrawal requested");
-    require(block.timestamp >= user.withdrawRequestTime + EXIT_PERIOD, "Exit period not finished");
+    require(user.withdrawRequestBlock > 0, "No request");
+    uint256 exitBlocks = EXIT_PERIOD / blockTime;
+    require(block.number >= user.withdrawRequestBlock + exitBlocks, "Exit not finished");
 
-    uint256 withdrawAmount = user.withdrawalAmount;
-    require(withdrawAmount > 0, "No amount to withdraw");
+    uint256 amt = user.withdrawalAmount;
+    require(amt > 0, "No amount");
 
     // Effects
-    user.amount -= withdrawAmount;
-    totalStaked -= withdrawAmount;
-    totalInExitPeriod -= withdrawAmount;
+    user.amount       -= amt;
+    totalStaked       -= amt;
+    totalInExitPeriod -= amt;
 
-    // Reset withdrawal request
-    user.withdrawRequestTime = 0;
-    user.withdrawalAmount = 0;
+    user.withdrawRequestBlock = 0;
+    user.withdrawalAmount     = 0;
 
-    // If user withdraws everything, reset lock
     if (user.amount == 0) {
-      user.lockStartTime = 0;
-      user.lockDuration = 0;
-      user.effectiveAmount = 0; // Should already be 0, but ensure
+      user.lockStartBlock     = 0;
+      user.lockDurationBlocks = 0;
+      user.lockDuration       = 0;
+      user.effectiveAmount    = 0;
+      user.rewardDebt         = 0;
+    } else {
+      user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
     }
 
-    // Interaction (principal is always reserved; this should not fail)
-    _safeTransferNative(msg.sender, withdrawAmount);
-    emit WithdrawExecuted(msg.sender, withdrawAmount);
+    _safeTransferNative(msg.sender, amt);
+    emit WithdrawExecuted(msg.sender, amt);
   }
 
-  // Cancel withdrawal request (move back from exit to active; starts earning again)
   function cancelWithdraw() external {
     UserInfo storage user = userInfo[msg.sender];
-    require(user.withdrawRequestTime > 0, "No withdrawal requested");
+    require(user.withdrawRequestBlock > 0, "No request");
 
-    // Distribute up to now for the previous active set (excludes this user's exiting amount)
     _updatePool();
 
-    uint256 addBackEffective = (user.withdrawalAmount * _getBoostMultiplier(user.lockDuration)) / 1e18;
-    user.effectiveAmount += addBackEffective;
-    totalActiveEffective += addBackEffective;
-    totalInExitPeriod -= user.withdrawalAmount;
-    // If canceling, revoke the delayed reward since resuming earning
-    user.delayedReward = 0;
-    user.delayedUnlockTime = 0;
-    user.withdrawRequestTime = 0;
-    user.withdrawalAmount = 0;
+    // Claim matured before restoring effective
+    _claimRewardsInternal(msg.sender);
 
-    // Resume earning from this point forward
+    uint256 addEff = (user.withdrawalAmount * _getBoostMultiplier(user.lockDuration)) / 1e18;
+    user.effectiveAmount += addEff;
+    totalActiveEffective += addEff;
+
+    totalInExitPeriod       -= user.withdrawalAmount;
+    user.withdrawRequestBlock = 0;
+    user.withdrawalAmount     = 0;
+
     user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
   }
 
   // ---------------------------
-  // Rewards: fully separate from withdrawals
+  // Rewards
   // ---------------------------
-
-  // Claim unlocked (virtual) delayed rewards (partial payout if underfunded; never reverts for lack of rewards)
   function claimRewards() external nonReentrant {
-    _claimRewards(msg.sender);
+    _claimRewardsInternal(msg.sender);
   }
 
-  function _claimRewards(address _user) internal {
+  function _claimRewardsInternal(address _user) internal {
     UserInfo storage user = userInfo[_user];
 
-    // Compute virtual claimable before update (matches views)
-    uint256 accPast = _accPSAt(uint64(block.timestamp - REWARD_DELAY_PERIOD));
+    // Compute VESTED frontier: accPS at (block - delay)
+    uint256 delayBlocks = REWARD_DELAY_PERIOD / blockTime;
+    uint256 tBlock = block.number > delayBlocks ? block.number - delayBlocks : 0;
+    uint256 accPast = _accPSAtBlock(uint64(tBlock));
+
+    // Virtual owed since last claim baseline
     uint256 baseline = user.debtClaimablePS;
     uint256 virtualOwed = 0;
     if (accPast > baseline && user.effectiveAmount > 0) {
@@ -277,26 +295,25 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
 
     _updatePool();
 
-    uint256 owed = 0;
+    uint256 owed = virtualOwed;
 
-    // Add delayed reward if unlocked
-    if (user.delayedUnlockTime > 0 && block.timestamp >= user.delayedUnlockTime) {
+    // Add snapshot from exiting portion if unlocked now
+    if (user.delayedUnlockBlock > 0 && block.number >= user.delayedUnlockBlock) {
       owed += user.delayedReward;
       user.delayedReward = 0;
-      user.delayedUnlockTime = 0;
+      user.delayedUnlockBlock = 0;
     }
-
-    owed += virtualOwed;
 
     uint256 budget = _rewardBalance();
     uint256 pay = owed <= budget ? owed : budget;
+
     if (pay > 0) {
       _safeTransferNative(_user, pay);
       totalClaimedRewards += pay;
       emit RewardClaimed(_user, pay);
     }
 
-    // Proportional advance for virtual part
+    // Advance claim baseline proportionally if underpaid
     if (owed > 0) {
       uint256 paidRatio = (pay * PRECISION_FACTOR) / owed;
       uint256 delta = accPast - baseline;
@@ -306,122 +323,96 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
       user.debtClaimablePS = accPast;
     }
 
-    // Keep rewardDebt in sync for pending view
+    // Keep rewardDebt synced for pending view
     user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
-  }
-
-  // ---------------------------
-  // Admin / params
-  // ---------------------------
-
-  // Update periods (only owner, no lock period)
-  function updatePeriods(
-    uint256 _rewardDelayPeriod,
-    uint256 _exitPeriod
-  ) external onlyOwner {
-    _updatePool();
-    require(_rewardDelayPeriod > 0, "Reward delay period must be positive");
-    require(_exitPeriod > 0, "Exit period must be positive");
-
-    REWARD_DELAY_PERIOD = _rewardDelayPeriod;
-    EXIT_PERIOD = _exitPeriod;
-
-    emit PeriodsUpdated(_rewardDelayPeriod, _exitPeriod);
-  }
-
-  // Recover wrong tokens sent to the contract (not native tokens)
-  function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
-    require(_tokenAddress != address(0), "Cannot recover native tokens");
-    (bool success, ) = _tokenAddress.call(
-      abi.encodeWithSignature("transfer(address,uint256)", msg.sender, _tokenAmount)
-    );
-    require(success, "Token transfer failed");
-    emit AdminTokenRecovery(_tokenAddress, _tokenAmount);
-  }
-
-  // Update pool limit per user
-  function updatePoolLimitPerUser(bool _hasUserLimit, uint256 _poolLimitPerUser) external onlyOwner {
-    _updatePool();
-    if (_hasUserLimit) {
-      require(!hasUserLimit || _poolLimitPerUser > poolLimitPerUser, "New limit must be higher");
-      hasUserLimit = true;
-      poolLimitPerUser = _poolLimitPerUser;
-    } else {
-      hasUserLimit = false;
-      poolLimitPerUser = 0;
-    }
-    emit NewPoolLimit(poolLimitPerUser);
-  }
-
-  // Fund rewards pool with native tokens
-  function fundRewards() external payable onlyOwner {
-    require(msg.value > 0, "Must send tokens");
-    emit RewardsFunded(msg.value);
-  }
-
-  // Withdraw excess rewards (emergency) — cannot touch principal liquidity
-  function emergencyRewardWithdraw(uint256 _amount) external onlyOwner {
-    _updatePool();
-    uint256 rb = _rewardBalance();
-    require(_amount <= rb, "Cannot withdraw user stakes or exit liquidity");
-    _safeTransferNative(msg.sender, _amount);
   }
 
   // ---------------------------
   // Views
   // ---------------------------
-
-  // View pending rewards (streamed since last update; excludes delayed)
-  function pendingReward(address _user) external view returns (uint256) {
+  function pendingReward(address _user) public view returns (uint256) {
     UserInfo storage user = userInfo[_user];
-    if (user.withdrawRequestTime != 0) {
-      return 0;
-    }
+    if (user.withdrawRequestBlock != 0) return 0;
 
     uint256 active = _activeEffective();
-    if (active == 0) {
-      return 0;
+    if (active == 0) return 0;
+
+    uint256 adjusted = accTokenPerShare;
+    if (block.number > lastRewardBlock) {
+      uint256 mult = block.number - lastRewardBlock;
+      uint256 toAlloc = mult * rewardPerBlock;
+
+      uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+      uint256 currentRewards = _rewardBalance();
+      uint256 allocCap = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
+      if (toAlloc > allocCap) toAlloc = allocCap;
+
+      if (toAlloc > 0) {
+        adjusted += (toAlloc * PRECISION_FACTOR) / active;
+      }
     }
 
-    // Simulate streaming allocation since last update
-    uint256 timeDelta = block.timestamp - lastUpdateTimestamp;
-    uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
-    uint256 currentRewards = _rewardBalance();
-    uint256 allocCap = 0;
-    if (currentRewards > undistributed) {
-      allocCap = currentRewards - undistributed;
-    }
-    uint256 toAllocate = emissionRate * timeDelta;
-    if (toAllocate > allocCap) {
-      toAllocate = allocCap;
-    }
-
-    uint256 adjustedTokenPerShare = accTokenPerShare;
-    if (toAllocate > 0) {
-      adjustedTokenPerShare += (toAllocate * PRECISION_FACTOR) / active;
-    }
-
-    uint256 currentPending = ((user.effectiveAmount * adjustedTokenPerShare) / PRECISION_FACTOR) - user.rewardDebt;
-    return currentPending;
+    return ((user.effectiveAmount * adjusted) / PRECISION_FACTOR) - user.rewardDebt;
   }
 
-  // View function to check if user is in lock period
+  // Pure read-only: what's claimable now from the sliding window + unlocked delayed snapshot
+  function claimableView(address _user) external view returns (uint256) {
+    UserInfo storage user = userInfo[_user];
+    uint256 owed = 0;
+
+    // unlocked snapshot from exiting portion
+    if (user.delayedUnlockBlock > 0 && block.number >= user.delayedUnlockBlock) {
+      owed += user.delayedReward;
+    }
+
+    // sliding window for current effective
+    uint256 E = user.effectiveAmount;
+    if (E == 0) return owed;
+
+    uint256 delayBlocks = REWARD_DELAY_PERIOD / blockTime;
+    uint256 tBlock = block.number > delayBlocks ? block.number - delayBlocks : 0;
+    uint256 accPast = _accPSAtBlock(uint64(tBlock));
+    uint256 baseline = user.debtClaimablePS;
+    if (accPast > baseline) {
+      owed += (E * (accPast - baseline)) / PRECISION_FACTOR;
+    }
+    return owed;
+  }
+
+  // How much has streamed but is still locked (inside the delay window) + locked snapshot
+  function lockedView(address _user) external view returns (uint256) {
+    UserInfo storage user = userInfo[_user];
+    uint256 locked = 0;
+
+    // locked snapshot from exiting portion
+    if (user.delayedUnlockBlock > 0 && block.number < user.delayedUnlockBlock) {
+      locked += user.delayedReward;
+    }
+
+    uint256 E = user.effectiveAmount;
+    if (E == 0) return locked;
+
+    uint256 accNow = _accPSNowView();
+    uint256 delayBlocks = REWARD_DELAY_PERIOD / blockTime;
+    uint256 tBlock = block.number > delayBlocks ? block.number - delayBlocks : 0;
+    uint256 accPast = _accPSAtBlock(uint64(tBlock));
+    if (accNow > accPast) {
+      locked += (E * (accNow - accPast)) / PRECISION_FACTOR;
+    }
+    return locked;
+  }
+
   function isLocked(address _user) external view returns (bool) {
     UserInfo storage user = userInfo[_user];
-    if (user.lockStartTime == 0) return false;
-    return block.timestamp < user.lockStartTime + user.lockDuration;
+    if (user.lockStartBlock == 0) return false;
+    return block.number < user.lockStartBlock + user.lockDurationBlocks;
   }
 
-  // View function to check if user is in exit period
   function isInExitPeriod(address _user) external view returns (bool) {
-    UserInfo storage user = userInfo[_user];
-    return user.withdrawRequestTime > 0;
+    return userInfo[_user].withdrawRequestBlock > 0;
   }
 
-  // View function to get user info (added lockDuration)
-  function getUserInfo(
-    address _user
-  )
+  function getUserInfo(address _user)
     external
     view
     returns (
@@ -439,253 +430,293 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     )
   {
     UserInfo storage user = userInfo[_user];
-    stakedAmount = user.amount;
-    lockStartTime = user.lockStartTime;
-    lockDuration = user.lockDuration;
-    withdrawRequestTime = user.withdrawRequestTime;
+    stakedAmount     = user.amount;
+    lockDuration     = user.lockDuration;
     withdrawalAmount = user.withdrawalAmount;
 
-    if (lockStartTime > 0) {
-      lockEndTime = lockStartTime + lockDuration;
-      isLocked_ = block.timestamp < lockEndTime;
-      canRequestWithdraw = !isLocked_ && withdrawRequestTime == 0;
+    lockStartTime       = user.lockStartBlock == 0 ? 0 : (block.timestamp - (block.number - user.lockStartBlock) * blockTime);
+    withdrawRequestTime = user.withdrawRequestBlock == 0 ? 0 : (block.timestamp - (block.number - user.withdrawRequestBlock) * blockTime);
+
+    if (user.lockStartBlock > 0) {
+      lockEndTime        = lockStartTime + lockDuration;
+      isLocked_          = block.number < user.lockStartBlock + user.lockDurationBlocks;
+      canRequestWithdraw = !isLocked_ && user.withdrawRequestBlock == 0;
     }
 
-    if (withdrawRequestTime > 0) {
+    if (user.withdrawRequestBlock > 0) {
       inExitPeriod = true;
+      uint256 exitBlocks = EXIT_PERIOD / blockTime;
       withdrawalAvailableTime = withdrawRequestTime + EXIT_PERIOD;
-      canExecuteWithdraw = block.timestamp >= withdrawalAvailableTime;
+      canExecuteWithdraw      = block.number >= user.withdrawRequestBlock + exitBlocks;
     }
   }
 
-  // View function to get time until unlock
   function timeUntilUnlock(address _user) external view returns (uint256) {
     UserInfo storage user = userInfo[_user];
-    if (user.lockStartTime == 0) return 0;
-
-    uint256 lockEndTime = user.lockStartTime + user.lockDuration;
-    if (block.timestamp >= lockEndTime) return 0;
-
-    return lockEndTime - block.timestamp;
+    if (user.lockStartBlock == 0) return 0;
+    if (block.number >= user.lockStartBlock + user.lockDurationBlocks) return 0;
+    uint256 remaining = user.lockStartBlock + user.lockDurationBlocks - block.number;
+    return remaining * blockTime;
   }
 
-  // View function to get time until withdrawal available
   function timeUntilWithdrawalAvailable(address _user) external view returns (uint256) {
     UserInfo storage user = userInfo[_user];
-    if (user.withdrawRequestTime == 0) return 0;
-
-    uint256 availableTime = user.withdrawRequestTime + EXIT_PERIOD;
-    if (block.timestamp >= availableTime) return 0;
-
-    return availableTime - block.timestamp;
+    if (user.withdrawRequestBlock == 0) return 0;
+    uint256 exitBlocks = EXIT_PERIOD / blockTime;
+    if (block.number >= user.withdrawRequestBlock + exitBlocks) return 0;
+    uint256 remaining = user.withdrawRequestBlock + exitBlocks - block.number;
+    return remaining * blockTime;
   }
 
-  // View function to get current status
   function getUserStatus(address _user) external view returns (string memory) {
     UserInfo storage user = userInfo[_user];
-
     if (user.amount == 0) return "No stake";
-    if (user.withdrawRequestTime > 0) {
-      if (block.timestamp >= user.withdrawRequestTime + EXIT_PERIOD) {
-        return "Withdrawal ready";
-      } else {
-        return "In exit period";
-      }
+    if (user.withdrawRequestBlock > 0) {
+      uint256 exitBlocks = EXIT_PERIOD / blockTime;
+      if (block.number >= user.withdrawRequestBlock + exitBlocks) return "Withdrawal ready";
+      return "In exit period";
     }
-    if (block.timestamp < user.lockStartTime + user.lockDuration) {
-      return "Locked";
-    }
+    if (block.number < user.lockStartBlock + user.lockDurationBlocks) return "Locked";
     return "Unlocked";
   }
 
-  // View function to get contract reward balance (excess over principal)
   function getRewardBalance() external view returns (uint256) {
     return _rewardBalance();
   }
 
-  // Get estimated APY for a given duration (in basis points, e.g., 500 = 5%)
   function getEstimatedAPY(uint256 _duration) public view returns (uint256) {
     if (_duration != 10 minutes && _duration != 20 minutes) return 0;
     uint256 activePrincipal = _activePrincipal();
     if (activePrincipal == 0) return 0;
+    uint256 mult = _getBoostMultiplier(_duration);
+    uint256 blocksPerYear = 365 days / blockTime;
+    uint256 annualRewards = rewardPerBlock * blocksPerYear;
+    uint256 base = (annualRewards * 10000) / activePrincipal; // basis points
+    return (base * mult) / 1e18;
+  }
 
-    uint256 multiplier = _getBoostMultiplier(_duration);
-    uint256 annualRewards = emissionRate * 365 days;
-    uint256 baseApyBasisPoints = (annualRewards * 10000) / activePrincipal;
-    return (baseApyBasisPoints * multiplier) / 1e18;
+  function getBaseAPY() public view returns (uint256) {
+    uint256 activePrincipal = _activePrincipal();
+    if (activePrincipal == 0) return 0;
+    uint256 blocksPerYear = 365 days / blockTime;
+    uint256 annualRewards = rewardPerBlock * blocksPerYear;
+    return (annualRewards * 10000) / activePrincipal;
   }
 
   // ---------------------------
-  // Reward accounting internals
+  // Reward accounting + checkpoints
   // ---------------------------
-
-  // Update pool variables
   function _updatePool() internal {
+    if (block.number <= lastRewardBlock) return;
+
     uint256 active = _activeEffective();
-    uint256 timeDelta = block.timestamp - lastUpdateTimestamp;
+    if (active == 0) { lastRewardBlock = block.number; return; }
+
+    uint256 mult = block.number - lastRewardBlock;
+    uint256 toAlloc = mult * rewardPerBlock;
+
     uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
     uint256 currentRewards = _rewardBalance();
-    if (active > 0 && timeDelta > 0) {
-      // Rewards to allocate this interval, capped by available reward budget minus already undistributed
-      uint256 allocCap = 0;
-      if (currentRewards > undistributed) {
-        allocCap = currentRewards - undistributed;
-      }
-      uint256 toAllocate = emissionRate * timeDelta;
-      if (toAllocate > allocCap) {
-        toAllocate = allocCap;
-      }
-      if (toAllocate > 0) {
-        accTokenPerShare += (toAllocate * PRECISION_FACTOR) / active;
-        totalAccruedRewards += toAllocate;
-      }
-    }
-    lastUpdateTimestamp = block.timestamp;
+    uint256 allocCap = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
+    if (toAlloc > allocCap) toAlloc = allocCap;
 
-    // Push checkpoint periodically for virtual delayed views
-    if (uint64(block.timestamp) - lastCheckpointTs >= checkpointInterval) {
-      _pushCheckpoint(uint64(block.timestamp), accTokenPerShare);
-      lastCheckpointTs = uint64(block.timestamp);
+    if (toAlloc > 0) {
+      accTokenPerShare += (toAlloc * PRECISION_FACTOR) / active;
+      totalAccruedRewards += toAlloc;
     }
-  }
+    lastRewardBlock = block.number;
 
-  function _pushCheckpoint(uint64 ts, uint256 acc) internal {
-    uint16 next = _cpHead + 1;
-    if (next >= MAX_CHECKPOINTS) next = 0;
-    _checkpoints[next] = Checkpoint({ ts: ts, acc: acc });
-    _cpHead = next;
-    if (_cpSize < MAX_CHECKPOINTS) {
-      _cpSize++;
+    // periodic checkpoint
+    if (uint64(block.number) - lastCheckpointBlock >= checkpointInterval) {
+      _pushCheckpoint(uint64(block.number), accTokenPerShare);
+      lastCheckpointBlock = uint64(block.number);
     }
   }
 
   function _accPSNowView() internal view returns (uint256) {
     uint256 active = _activeEffective();
     if (active == 0) return accTokenPerShare;
-    uint256 timeDelta = block.timestamp - lastUpdateTimestamp;
-    if (timeDelta == 0) return accTokenPerShare;
+    if (block.number <= lastRewardBlock) return accTokenPerShare;
+
+    uint256 mult = block.number - lastRewardBlock;
+    if (mult == 0) return accTokenPerShare;
+
+    uint256 toAlloc = mult * rewardPerBlock;
     uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
     uint256 currentRewards = _rewardBalance();
-    uint256 allocCap = 0;
-    if (currentRewards > undistributed) allocCap = currentRewards - undistributed;
-    uint256 toAllocate = emissionRate * timeDelta;
-    if (toAllocate > allocCap) toAllocate = allocCap;
-    if (toAllocate == 0) return accTokenPerShare;
-    return accTokenPerShare + (toAllocate * PRECISION_FACTOR) / active;
+    uint256 allocCap = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
+    if (toAlloc > allocCap) toAlloc = allocCap;
+    if (toAlloc == 0) return accTokenPerShare;
+
+    return accTokenPerShare + (toAlloc * PRECISION_FACTOR) / active;
   }
 
-  function _accPSAt(uint64 ts) internal view returns (uint256) {
+  // Interpolated accPS at a past block (for sliding-window vesting)
+  function _accPSAtBlock(uint64 targetBlock) internal view returns (uint256) {
     if (_cpSize == 0) return 0;
-    // Find newest checkpoint with cp.ts <= ts
+
+    // Find bracketing checkpoints: prev <= target < next
+    (bool hasPrev, Checkpoint memory prev) = _findPrevCp(targetBlock);
+    (bool hasNext, Checkpoint memory next_) = _findNextCp(prev.blockNum);
+
+    if (!hasPrev) return 0;
+    if (!hasNext || targetBlock >= next_.blockNum) {
+      // no next (or target beyond next) → just prev
+      // If target > lastRewardBlock we also need to pro-rate dormant batch
+      if (targetBlock > lastRewardBlock) {
+        // prorate since lastRewardBlock
+        uint256 active = _activeEffective();
+        if (active == 0) return prev.acc;
+        uint256 fullDelta = uint256(block.number) - lastRewardBlock;
+        if (fullDelta == 0) return prev.acc;
+
+        uint256 blockToTarget = uint256(targetBlock) - lastRewardBlock;
+        if (blockToTarget > fullDelta) blockToTarget = fullDelta;
+
+        uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+        uint256 currentRewards = _rewardBalance();
+        uint256 allocCap = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
+
+        uint256 fullToAlloc = rewardPerBlock * fullDelta;
+        if (fullToAlloc > allocCap) fullToAlloc = allocCap;
+
+        uint256 prorata = (fullToAlloc * blockToTarget) / fullDelta;
+        return prev.acc + (prorata * PRECISION_FACTOR) / active;
+      }
+      return prev.acc;
+    }
+
+    // interpolate between prev and next
+    if (next_.blockNum == prev.blockNum) return prev.acc;
+    uint256 span = next_.blockNum - prev.blockNum;
+    uint256 into = targetBlock - prev.blockNum;
+    uint256 deltaAcc = next_.acc - prev.acc;
+    return prev.acc + (deltaAcc * into) / span;
+  }
+
+  function _findPrevCp(uint64 target) internal view returns (bool, Checkpoint memory) {
     uint16 idx = _cpHead;
     uint16 count = 0;
-    uint256 bestAcc = 0;
-    uint64 bestTs = 0;
+    Checkpoint memory best;
+    bool ok = false;
     while (count < _cpSize) {
       Checkpoint memory cp = _checkpoints[idx];
-      if (cp.ts != 0 && cp.ts <= ts && cp.ts >= bestTs) {
-        bestTs = cp.ts;
-        bestAcc = cp.acc;
+      if (cp.blockNum != 0 && cp.blockNum <= target && (!ok || cp.blockNum >= best.blockNum)) {
+        best = cp; ok = true;
       }
       if (idx == 0) idx = MAX_CHECKPOINTS - 1; else idx--;
       count++;
     }
-    if (bestTs == 0) return 0;
-
-    // No forward needed if exact match or ts <= lastUpdateTimestamp (no pending batch to pro-rate)
-    if (bestTs == ts || ts <= lastUpdateTimestamp) return bestAcc;
-
-    // Pro-rate the pending batch for ts > lastUpdateTimestamp (assume uniform accrual over dormant period)
-    uint256 active = _activeEffective();
-    if (active == 0) return bestAcc;
-
-    uint256 fullDelta = block.timestamp - lastUpdateTimestamp;
-    uint256 timeToTs = uint256(ts) - lastUpdateTimestamp;
-
-    uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
-    uint256 currentRewards = _rewardBalance();
-    uint256 allocCap = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
-
-    uint256 fullToAllocate = emissionRate * fullDelta;
-    if (fullToAllocate > allocCap) fullToAllocate = allocCap;
-
-    uint256 prorataToAllocate = (fullToAllocate * timeToTs) / fullDelta;
-
-    return bestAcc + (prorataToAllocate * PRECISION_FACTOR) / active;
+    return (ok, best);
   }
 
-  // View: claimable streamed amount (unlocked by delay)
-  function claimableView(address _user) external view returns (uint256) {
-    UserInfo storage user = userInfo[_user];
-    uint256 owed = 0;
-    if (user.delayedUnlockTime > 0 && block.timestamp >= user.delayedUnlockTime) {
-      owed += user.delayedReward;
+  function _findNextCp(uint64 prevBlock) internal view returns (bool, Checkpoint memory) {
+    // Scan forward from oldest to newest to find the next > prevBlock
+    uint16 count = 0;
+    // First, find oldest index
+    uint16 oldest = _cpHead + MAX_CHECKPOINTS + 1 - _cpSize;
+    oldest %= MAX_CHECKPOINTS;
+    // Walk forward oldest → head
+    uint16 i = oldest;
+    while (count < _cpSize) {
+      Checkpoint memory cp = _checkpoints[i];
+      if (cp.blockNum > prevBlock) return (true, cp);
+      if (i == _cpHead) break;
+      i = (i + 1) % MAX_CHECKPOINTS;
+      count++;
     }
-    uint256 E = user.effectiveAmount;
-    if (E == 0) return owed;
-    uint256 accPast = _accPSAt(uint64(block.timestamp - REWARD_DELAY_PERIOD));
-    uint256 baseline = user.debtClaimablePS;
-    if (baseline > accPast) return owed;
-    owed += (E * (accPast - baseline)) / PRECISION_FACTOR;
-    return owed;
+    return (false, Checkpoint({blockNum:0, acc:0}));
   }
 
-  // View: locked (delayed) amount (streamed but not yet unlocked)
-  function lockedView(address _user) external view returns (uint256) {
-    UserInfo storage user = userInfo[_user];
-    uint256 locked = 0;
-    if (user.delayedUnlockTime > 0 && block.timestamp < user.delayedUnlockTime) {
-      locked += user.delayedReward;
-    }
-    uint256 E = user.effectiveAmount;
-    if (E == 0) return locked;
-    uint256 accNow = _accPSNowView();
-    uint256 accPast = _accPSAt(uint64(block.timestamp - REWARD_DELAY_PERIOD));
-    if (accNow <= accPast) return locked;
-    locked += (E * (accNow - accPast)) / PRECISION_FACTOR;
-    return locked;
+  function _pushCheckpoint(uint64 blockNum, uint256 acc) internal {
+    uint16 next = _cpHead + 1;
+    if (next >= MAX_CHECKPOINTS) next = 0;
+    _checkpoints[next] = Checkpoint({ blockNum: blockNum, acc: acc });
+    _cpHead = next;
+    if (_cpSize < MAX_CHECKPOINTS) _cpSize++;
   }
 
   // ---------------------------
-  // Emission configuration
+  // Admin
   // ---------------------------
-  function setEmissionRate(uint256 _ratePerSecond) external onlyOwner {
+  function updatePeriods(uint256 _rewardDelayPeriod, uint256 _exitPeriod) external onlyOwner {
     _updatePool();
-    emissionRate = _ratePerSecond;
-    emit EmissionRateUpdated(_ratePerSecond);
+    require(_rewardDelayPeriod > 0 && _exitPeriod > 0, "Invalid periods");
+    REWARD_DELAY_PERIOD = _rewardDelayPeriod;
+    EXIT_PERIOD         = _exitPeriod;
+    emit PeriodsUpdated(_rewardDelayPeriod, _exitPeriod);
   }
 
-  // Convenience: set emission rate to deplete current reward balance over target duration
-  function setEmissionRateByDuration(uint256 _duration) external onlyOwner {
-    _updatePool();
-    require(_duration > 0, "Duration must be > 0");
-    uint256 budget = _rewardBalance();
-    emissionRate = budget / _duration;
-    emit EmissionRateUpdated(emissionRate);
+  function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
+    require(_tokenAddress != address(0), "native not recoverable");
+    (bool success, ) = _tokenAddress.call(
+      abi.encodeWithSignature("transfer(address,uint256)", msg.sender, _tokenAmount)
+    );
+    require(success, "Token transfer failed");
+    emit AdminTokenRecovery(_tokenAddress, _tokenAmount);
   }
 
-  // Safe transfer native tokens
+  function updatePoolLimitPerUser(bool _hasUserLimit, uint256 _poolLimitPerUser) external onlyOwner {
+    _updatePool();
+    if (_hasUserLimit) {
+      require(!hasUserLimit || _poolLimitPerUser > poolLimitPerUser, "Limit must increase");
+      hasUserLimit = true;
+      poolLimitPerUser = _poolLimitPerUser;
+    } else {
+      hasUserLimit = false;
+      poolLimitPerUser = 0;
+    }
+    emit NewPoolLimit(poolLimitPerUser);
+  }
+
+  function fundRewards() external payable onlyOwner {
+    require(msg.value > 0, "No value");
+    emit RewardsFunded(msg.value);
+  }
+
+  function emergencyRewardWithdraw(uint256 _amount) external onlyOwner {
+    _updatePool();
+    uint256 rb = _rewardBalance();
+    require(_amount <= rb, "Cannot withdraw principal");
+    _safeTransferNative(msg.sender, _amount);
+  }
+
+  function setBaseAPY(uint256 _apyBps) external onlyOwner {
+    _updatePool();
+    require(_apyBps <= 1000000, "APY too high"); // up to 10000%
+    uint256 activePrincipal = _activePrincipal();
+    uint256 blocksPerYear   = 365 days / blockTime;
+    if (activePrincipal > 0) {
+      rewardPerBlock = (activePrincipal * _apyBps) / (blocksPerYear * 10000);
+    } else {
+      rewardPerBlock = (1e18 * _apyBps) / (blocksPerYear * 10000);
+    }
+    emit NewRewardPerBlock(rewardPerBlock);
+  }
+
+  function setRewardPerBlock(uint256 _rewardPerBlock) external onlyOwner {
+    _updatePool();
+    rewardPerBlock = _rewardPerBlock;
+    emit NewRewardPerBlock(_rewardPerBlock);
+  }
+
+  function updateBlockTime(uint256 _newBlockTime) external onlyOwner {
+    require(_newBlockTime > 0 && _newBlockTime <= 60, "Bad blockTime");
+    uint256 old = blockTime;
+    blockTime = _newBlockTime;
+    emit BlockTimeUpdated(old, _newBlockTime);
+  }
+
+  // ---------------------------
+  // Misc
+  // ---------------------------
+  function updatePool() external { _updatePool(); }
+
   function _safeTransferNative(address _to, uint256 _amount) internal {
     (bool success, ) = _to.call{ value: _amount }("");
-    require(success, "Native token transfer failed");
+    require(success, "Native transfer failed");
   }
 
-  // Public poke function to update pool without other actions
-  function updatePool() external {
-    _updatePool();
-  }
-
-  // ---------------------------
-  // Fallbacks
-  // ---------------------------
-
-  // Receive function to accept native token transfers
-  receive() external payable {
-    // Accept native tokens for rewards funding
-  }
-
-  // Fallback function
-  fallback() external payable {
-    // Accept native tokens for rewards funding
-  }
+  receive() external payable {}
+  fallback() external payable {}
 }

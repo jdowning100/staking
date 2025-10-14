@@ -531,7 +531,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                 {isNativeQuai ? (
                   stakingData?.contractInfo ? (
                     (() => {
-                      const totalStakedNum = Number(stakingData.contractInfo.totalStakedFormatted || 0);
+                      const totalStakedNum = Number((stakingData.contractInfo.activeStakedFormatted ?? stakingData.contractInfo.totalStakedFormatted) || 0);
                       const rewardsNum = Number(stakingData.contractInfo.rewardBalanceFormatted || 0);
                       if (totalStakedNum <= 0 && rewardsNum > 0) {
                         return (
@@ -630,16 +630,16 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
           </div>
         )}
 
-        {/* Total Staked */}
+        {/* Active Staked (excludes exit) */}
         <div>
           <div className="text-sm font-semibold text-white">
-            Total Staked: {/* Native QUAI Total Staked Display */}
+            Active Staked: {/* Native QUAI Active Staked Display */}
             {isNativeQuai ? (
               stakingData?.contractInfo ? (
                 <>
-                  {stakingData.contractInfo.totalStakedFormatted} {pool.tokens[0]}
+                  {stakingData.contractInfo.activeStakedFormatted ?? stakingData.contractInfo.totalStakedFormatted} {pool.tokens[0]}
                   <span className="text-xs text-[#666666] ml-2">
-                    ~${formatNumber(Number(stakingData.contractInfo.totalStakedFormatted) * 0.05)}
+                    ~${formatNumber(Number(stakingData.contractInfo.activeStakedFormatted ?? stakingData.contractInfo.totalStakedFormatted) * 0.05)}
                   </span>
                 </>
               ) : (

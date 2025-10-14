@@ -157,7 +157,7 @@ export function StakingInfo({
 
     return (
       <div className="space-y-3">
-        <h4 className="font-medium text-white">Delayed Rewards</h4>
+        <h4 className="font-medium text-white">Vesting Rewards</h4>
         {userInfo.delayedRewards.map((reward, index) => (
           <div key={index} className="p-3 bg-[#222222] rounded-lg">
             <div className="flex justify-between items-center">
@@ -308,14 +308,14 @@ export function StakingInfo({
               </div>
               {/* Reward Metrics */}
               <div className="flex justify-between">
-                <span className="text-[#999999]">Claimable Now</span>
-                <span className="font-medium text-green-400">
+                <span className="text-[#999999]">Claimable Rewards</span>
+                <span className="font-medium text-white">
                   {userInfo.claimableRewardsFormatted} {TOKEN_SYMBOL}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#999999]">Delayed Rewards</span>
-                <span className="font-medium text-orange-400">
+                <span className="text-[#999999]">Vesting Rewards</span>
+                <span className="font-medium text-white">
                   {userInfo.totalDelayedRewardsFormatted} {TOKEN_SYMBOL}
                 </span>
               </div>
@@ -326,8 +326,8 @@ export function StakingInfo({
                 const totalEarnedFormatted = formatBalance(formatQuai(totalEarned));
                 return (
                   <div className="flex justify-between">
-                    <span className="text-[#999999]">Total Earned</span>
-                    <span className="font-medium text-yellow-400">
+                    <span className="text-[#999999]">Total Rewards</span>
+                    <span className="font-medium text-white">
                       {totalEarnedFormatted} {TOKEN_SYMBOL}
                     </span>
                   </div>
@@ -335,13 +335,7 @@ export function StakingInfo({
               })()}
               <div className="flex justify-between">
                 <span className="text-[#999999]">Unlock Status</span>
-                <span className={cn(
-                  "font-medium text-sm",
-                  userInfo.userStatus === 'Locked' && 'text-yellow-400',
-                  userInfo.userStatus === 'Unlocked' && 'text-green-400',
-                  userInfo.userStatus === 'In exit period' && 'text-orange-400',
-                  userInfo.userStatus === 'Withdrawal ready' && 'text-green-500'
-                )}>
+                <span className="font-medium text-sm text-white">
                   {userInfo.userStatus}
                 </span>
               </div>
@@ -361,12 +355,7 @@ export function StakingInfo({
               )}
               <div className="flex justify-between">
                 <span className="text-[#999999]">Vesting Status</span>
-                <span className={cn(
-                  "font-medium text-sm",
-                  userInfo.lockStartTime && (Math.floor(Date.now() / 1000) >= userInfo.lockStartTime + Math.floor(REWARD_DELAY_PERIOD))
-                    ? 'text-green-400' 
-                    : 'text-yellow-400'
-                )}>
+                <span className="font-medium text-sm text-white">
                   {userInfo.lockStartTime ? (
                     Math.floor(Date.now() / 1000) >= userInfo.lockStartTime + Math.floor(REWARD_DELAY_PERIOD)
                       ? 'Rewards Vesting'
@@ -490,14 +479,62 @@ export function StakingInfo({
                       </div>
                       {contractInfo && (
                         <div className="flex justify-between">
-                          <span className="text-[#999999]">Estimated Earnings:</span>
-                          <span className="text-green-400">
+                          <span className="text-[#999999]">Estimated APR After Deposit:</span>
+                          <span className="text-blue-400">
                             {(() => {
-                              const apy = stakePeriod === 600 
+                              // Calculate projected APR after deposit is added to pool
+                              const currentTotalStaked = parseFloat((contractInfo.activeStakedFormatted ?? contractInfo.totalStakedFormatted) || '0');
+                              const newDeposit = parseFloat(depositAmount);
+                              const projectedTotalStaked = currentTotalStaked + newDeposit;
+                              
+                              // Get current reward rate (rewardPerBlock or emissionRate)
+                              const currentRewardBalance = parseFloat(contractInfo.rewardBalanceFormatted || '0');
+                              
+                              if (projectedTotalStaked === 0 || currentRewardBalance === 0) {
+                                return 'TBD';
+                              }
+                              
+                              // Simple APR calculation: (annual rewards / total staked) * 100
+                              // Assuming current reward distribution continues
+                              const currentApy = stakePeriod === 600 
                                 ? (contractInfo.apy30 ?? contractInfo.apy)
                                 : (contractInfo.apy90 ?? contractInfo.apy);
+                              
+                              // Estimate annual rewards from current APY and current pool size
+                              const estimatedAnnualRewards = (currentTotalStaked * currentApy / 100);
+                              
+                              // Calculate projected APR with larger pool
+                              const projectedApr = projectedTotalStaked > 0 
+                                ? (estimatedAnnualRewards / projectedTotalStaked) * 100 
+                                : currentApy;
+                              
+                              return `${projectedApr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
+                            })()}
+                          </span>
+                        </div>
+                      )}
+                      {contractInfo && (
+                        <div className="flex justify-between">
+                          <span className="text-[#999999]">Your Period Earnings:</span>
+                          <span className="text-green-400">
+                            {(() => {
+                              // Use the projected APR for earnings calculation
+                              const currentTotalStaked = parseFloat((contractInfo.activeStakedFormatted ?? contractInfo.totalStakedFormatted) || '0');
+                              const newDeposit = parseFloat(depositAmount);
+                              const projectedTotalStaked = currentTotalStaked + newDeposit;
+                              
+                              const currentApy = stakePeriod === 600 
+                                ? (contractInfo.apy30 ?? contractInfo.apy)
+                                : (contractInfo.apy90 ?? contractInfo.apy);
+                              
+                              let projectedApr = currentApy;
+                              if (projectedTotalStaked > 0 && currentTotalStaked > 0) {
+                                const estimatedAnnualRewards = (currentTotalStaked * currentApy / 100);
+                                projectedApr = (estimatedAnnualRewards / projectedTotalStaked) * 100;
+                              }
+                              
                               const periodInSeconds = stakePeriod;
-                              const annualReturn = (parseFloat(depositAmount) * apy / 100);
+                              const annualReturn = (newDeposit * projectedApr / 100);
                               const periodReturn = (annualReturn * periodInSeconds) / (365 * 24 * 60 * 60);
                               return `${periodReturn.toFixed(4)} QUAI`;
                             })()}
