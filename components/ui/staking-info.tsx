@@ -18,7 +18,7 @@ interface StakingInfoProps {
   isTransacting: boolean;
   error: string | null;
   transactionHash: string | null;
-  onDeposit: (amount: string) => Promise<void>;
+  onDeposit: (amount: string, durationSeconds: number) => Promise<void>;
   onRequestWithdraw: (amount: string) => Promise<void>;
   onExecuteWithdraw: () => Promise<void>;
   onCancelWithdraw: () => Promise<void>;
@@ -44,10 +44,11 @@ export function StakingInfo({
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'rewards'>('deposit');
+  const [stakePeriod, setStakePeriod] = useState<600 | 1200>(600);
 
   const handleDeposit = async () => {
     if (!depositAmount || parseFloat(depositAmount) <= 0) return;
-    await onDeposit(depositAmount);
+    await onDeposit(depositAmount, stakePeriod);
     setDepositAmount('');
   };
 
@@ -282,7 +283,7 @@ export function StakingInfo({
           )}
 
           {transactionHash && (
-            <div className="p-3 bg-green-500/10 text-green-400 rounded-md text-sm mb-4">
+            <div className="p-3 bg-green-500/10 text-green-400 rounded-md text-sm mb-2">
               Transaction submitted:{' '}
               <a
                 href={`https://quaiscan.io/tx/${transactionHash}`}
@@ -295,51 +296,45 @@ export function StakingInfo({
             </div>
           )}
 
-          {/* Pool Stats */}
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-[#999999]">Total Staked</span>
-              <span className="font-medium text-white">
-                {contractInfo?.totalStakedFormatted || '0'} {TOKEN_SYMBOL}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#999999]">APY</span>
-              <span className="font-medium text-green-400">
-                {contractInfo?.apy ? `${formatBalance(contractInfo.apy)}%` : '0%'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#999999]">Your Balance</span>
-              <span className="font-medium text-white">
-                {contractInfo?.userQuaiBalanceFormatted || '0'} {TOKEN_SYMBOL}
-              </span>
-            </div>
-          </div>
 
           {/* User Staking Info */}
           {userInfo && userInfo.stakedAmount > BigInt(0) && (
-            <div className="pt-4 border-t border-[#333333] space-y-2">
+            <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-[#999999]">Your Stake</span>
                 <span className="font-medium text-white">
                   {userInfo.stakedAmountFormatted} {TOKEN_SYMBOL}
                 </span>
               </div>
+              {/* Reward Metrics */}
               <div className="flex justify-between">
-                <span className="text-[#999999]">Claimable Rewards</span>
+                <span className="text-[#999999]">Claimable Now</span>
                 <span className="font-medium text-green-400">
                   {userInfo.claimableRewardsFormatted} {TOKEN_SYMBOL}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#999999]">Total Earned</span>
-                <span className="font-medium text-yellow-400">
+                <span className="text-[#999999]">Delayed Rewards</span>
+                <span className="font-medium text-orange-400">
                   {userInfo.totalDelayedRewardsFormatted} {TOKEN_SYMBOL}
                 </span>
               </div>
+              {(() => {
+                const totalEarned =
+                  (userInfo.claimableRewards || BigInt(0)) +
+                  (userInfo.totalDelayedRewards || BigInt(0));
+                const totalEarnedFormatted = formatBalance(formatQuai(totalEarned));
+                return (
+                  <div className="flex justify-between">
+                    <span className="text-[#999999]">Total Earned</span>
+                    <span className="font-medium text-yellow-400">
+                      {totalEarnedFormatted} {TOKEN_SYMBOL}
+                    </span>
+                  </div>
+                );
+              })()}
               <div className="flex justify-between">
-                <span className="text-[#999999]">Status</span>
+                <span className="text-[#999999]">Unlock Status</span>
                 <span className={cn(
                   "font-medium text-sm",
                   userInfo.userStatus === 'Locked' && 'text-yellow-400',
@@ -364,6 +359,21 @@ export function StakingInfo({
                   </span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span className="text-[#999999]">Vesting Status</span>
+                <span className={cn(
+                  "font-medium text-sm",
+                  userInfo.lockStartTime && (Math.floor(Date.now() / 1000) >= userInfo.lockStartTime + Math.floor(REWARD_DELAY_PERIOD))
+                    ? 'text-green-400' 
+                    : 'text-yellow-400'
+                )}>
+                  {userInfo.lockStartTime ? (
+                    Math.floor(Date.now() / 1000) >= userInfo.lockStartTime + Math.floor(REWARD_DELAY_PERIOD)
+                      ? 'Rewards Vesting'
+                      : `Vesting in ${Math.max(0, Math.ceil((userInfo.lockStartTime + Math.floor(REWARD_DELAY_PERIOD) - Math.floor(Date.now() / 1000)) / 60))}m`
+                  ) : 'No Stake'}
+                </span>
+              </div>
               {userInfo.isInExitPeriod && (
                 <div className="flex justify-between">
                   <span className="text-[#999999]">Exit Progress</span>
@@ -426,6 +436,77 @@ export function StakingInfo({
                   className="bg-[#222222] border-[#333333] text-white"
                   disabled={isTransacting || userInfo?.isInExitPeriod}
                 />
+                <div className="text-center">
+                  <div className="text-xs text-[#666666] mb-1">Stake Period</div>
+                  <div className="flex justify-center gap-1 mb-3">
+                    <button
+                      onClick={() => setStakePeriod(600)}
+                      className={cn(
+                        "px-2 py-0.5 rounded text-xs font-medium transition-colors",
+                        stakePeriod === 600
+                          ? "bg-red-900/50 text-white border border-red-700"
+                          : "bg-[#222222] text-[#666666] hover:text-[#999999]"
+                      )}
+                    >
+                      10m
+                    </button>
+                    <button
+                      onClick={() => setStakePeriod(1200)}
+                      className={cn(
+                        "px-2 py-0.5 rounded text-xs font-medium transition-colors",
+                        stakePeriod === 1200
+                          ? "bg-red-900/50 text-white border border-red-700"
+                          : "bg-[#222222] text-[#666666] hover:text-[#999999]"
+                      )}
+                    >
+                      20m
+                    </button>
+                  </div>
+                  
+                  {/* Stake Information */}
+                  {depositAmount && parseFloat(depositAmount) > 0 && (
+                    <div className="bg-[#0a0a0a] rounded-lg p-3 space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-[#999999]">Stake Unlocks:</span>
+                        <span className="text-white">
+                          {new Date(Date.now() + stakePeriod * 1000).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#999999]">Rewards Begin Vesting:</span>
+                        <span className="text-yellow-400">
+                          {new Date(Date.now() + REWARD_DELAY_PERIOD * 1000).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                      {contractInfo && (
+                        <div className="flex justify-between">
+                          <span className="text-[#999999]">Estimated Earnings:</span>
+                          <span className="text-green-400">
+                            {(() => {
+                              const apy = stakePeriod === 600 
+                                ? (contractInfo.apy30 ?? contractInfo.apy)
+                                : (contractInfo.apy90 ?? contractInfo.apy);
+                              const periodInSeconds = stakePeriod;
+                              const annualReturn = (parseFloat(depositAmount) * apy / 100);
+                              const periodReturn = (annualReturn * periodInSeconds) / (365 * 24 * 60 * 60);
+                              return `${periodReturn.toFixed(4)} QUAI`;
+                            })()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <Button
                   onClick={handleDeposit}
                   disabled={isTransacting || !depositAmount || parseFloat(depositAmount) <= 0 || userInfo?.isInExitPeriod}
@@ -452,7 +533,7 @@ export function StakingInfo({
               <div className="space-y-4">
                 <div className="p-3 bg-orange-500/10 text-orange-400 rounded-lg text-xs">
                   <p className="font-medium mb-1">Exit Window System:</p>
-                  <p>Withdrawals require a {Math.floor(EXIT_PERIOD / 3600)}-hour exit window. During this period, you earn no rewards and cannot deposit more tokens.</p>
+                  <p>Withdrawals require a {Math.floor(EXIT_PERIOD / 60)}-minute exit window. During this period, you earn no rewards and cannot deposit more tokens.</p>
                 </div>
                 <WithdrawalStatusDisplay />
 
@@ -504,7 +585,7 @@ export function StakingInfo({
                           Early withdrawal forfeits all pending rewards
                         </p>
                         <p className="text-orange-400">
-                          All withdrawals require {Math.floor(EXIT_PERIOD / 3600)}-hour exit window
+                          All withdrawals require {Math.floor(EXIT_PERIOD / 60)}-minute exit window
                         </p>
                       </div>
                     )}
@@ -516,8 +597,8 @@ export function StakingInfo({
             {activeTab === 'rewards' && (
               <div className="space-y-4">
                 <div className="p-3 bg-yellow-500/10 text-yellow-400 rounded-lg text-xs">
-                  <p className="font-medium mb-1">Reward Delay System:</p>
-                  <p>As you earn rewards, they are placed in a {Math.floor(REWARD_DELAY_PERIOD / 3600)}-hour delay queue before becoming claimable. Once the delay has passed, you can claim them immediately.</p>
+                  <p className="font-medium mb-1">Reward Vesting System:</p>
+                  <p>As you earn rewards, they are placed in a {Math.floor(REWARD_DELAY_PERIOD / 60)}-minute delay queue before becoming claimable. Once the delay has passed, you can claim them immediately.</p>
                 </div>
                 <DelayedRewardsDisplay />
               </div>

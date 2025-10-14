@@ -5,24 +5,40 @@
   "abi": [
     {
       "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_rewardPerBlock",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_startBlock",
-          "type": "uint256"
-        },
+        { "internalType": "address", "name": "_user", "type": "address" }
+      ],
+      "name": "claimableView",
+      "outputs": [
+        { "internalType": "uint256", "name": "", "type": "uint256" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "_user", "type": "address" }
+      ],
+      "name": "lockedView",
+      "outputs": [
+        { "internalType": "uint256", "name": "", "type": "uint256" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "emissionRate",
+      "outputs": [
+        { "internalType": "uint256", "name": "", "type": "uint256" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
         {
           "internalType": "uint256",
           "name": "_poolLimitPerUser",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_lockPeriod",
           "type": "uint256"
         },
         {
@@ -410,7 +426,13 @@
       "type": "function"
     },
     {
-      "inputs": [],
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_duration",
+          "type": "uint256"
+        }
+      ],
       "name": "deposit",
       "outputs": [],
       "stateMutability": "payable",
@@ -490,6 +512,25 @@
     {
       "inputs": [
         {
+          "internalType": "uint256",
+          "name": "_duration",
+          "type": "uint256"
+        }
+      ],
+      "name": "getEstimatedAPY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "address",
           "name": "_user",
           "type": "address"
@@ -497,56 +538,17 @@
       ],
       "name": "getUserInfo",
       "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "stakedAmount",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "lockStartTime",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "lockEndTime",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "withdrawRequestTime",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "withdrawalAmount",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "withdrawalAvailableTime",
-          "type": "uint256"
-        },
-        {
-          "internalType": "bool",
-          "name": "isLocked_",
-          "type": "bool"
-        },
-        {
-          "internalType": "bool",
-          "name": "inExitPeriod",
-          "type": "bool"
-        },
-        {
-          "internalType": "bool",
-          "name": "canRequestWithdraw",
-          "type": "bool"
-        },
-        {
-          "internalType": "bool",
-          "name": "canExecuteWithdraw",
-          "type": "bool"
-        }
+        { "internalType": "uint256", "name": "stakedAmount", "type": "uint256" },
+        { "internalType": "uint256", "name": "lockStartTime", "type": "uint256" },
+        { "internalType": "uint256", "name": "lockEndTime", "type": "uint256" },
+        { "internalType": "uint256", "name": "lockDuration", "type": "uint256" },
+        { "internalType": "uint256", "name": "withdrawRequestTime", "type": "uint256" },
+        { "internalType": "uint256", "name": "withdrawalAmount", "type": "uint256" },
+        { "internalType": "uint256", "name": "withdrawalAvailableTime", "type": "uint256" },
+        { "internalType": "bool", "name": "isLocked_", "type": "bool" },
+        { "internalType": "bool", "name": "inExitPeriod", "type": "bool" },
+        { "internalType": "bool", "name": "canRequestWithdraw", "type": "bool" },
+        { "internalType": "bool", "name": "canExecuteWithdraw", "type": "bool" }
       ],
       "stateMutability": "view",
       "type": "function"

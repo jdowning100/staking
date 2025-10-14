@@ -440,7 +440,7 @@ export function useLPStaking(poolId: string) {
   }, [loadPoolInfo]);
 
   // Stake LP tokens in the staking contract
-  const stakeLPTokens = useCallback(async (amount: string) => {
+  const stakeLPTokens = useCallback(async (amount: string, durationDays: number = 30) => {
     if (!account?.addr || !web3Provider || !poolConfig.stakingContract) {
       setError('Please connect your wallet or staking contract not deployed');
       return false;
@@ -471,8 +471,14 @@ export function useLPStaking(poolId: string) {
         }
       }
 
-      // Stake LP tokens
-      const tx = await stakingContract.deposit(amountWei, { gasLimit: 500000 });
+      // Stake LP tokens with optional duration (try 2-arg signature first)
+      const durationSeconds = durationDays === 90 ? 90 * 24 * 60 * 60 : 30 * 24 * 60 * 60;
+      let tx;
+      try {
+        tx = await stakingContract.deposit(amountWei, durationSeconds, { gasLimit: 700000 });
+      } catch (e: any) {
+        tx = await stakingContract.deposit(amountWei, { gasLimit: 700000 });
+      }
       setTransactionHash(tx.hash);
 
       await tx.wait();

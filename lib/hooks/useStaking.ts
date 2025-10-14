@@ -14,6 +14,7 @@ export function formatBalance(value: string | number): string {
   return parseFloat(num.toFixed(3)).toString();
 }
 
+
 export interface DelayedReward {
   amount: bigint;
   unlockTime: number;
@@ -51,6 +52,8 @@ export interface ContractInfo {
   totalStakedFormatted: string;
   rewardPerBlock: bigint;
   rewardPerBlockFormatted: string;
+  emissionRate?: bigint;
+  emissionRateFormatted?: string;
   poolLimitPerUser: bigint;
   poolLimitPerUserFormatted: string;
   hasUserLimit: boolean;
@@ -58,7 +61,9 @@ export interface ContractInfo {
   contractBalanceFormatted: string;
   rewardBalance: bigint;
   rewardBalanceFormatted: string;
-  apy: number; // Annual percentage yield
+  apy: number; // default APY (30D)
+  apy30?: number;
+  apy90?: number;
   currentBlock: number;
   userQuaiBalance: bigint;
   userQuaiBalanceFormatted: string;
@@ -73,15 +78,16 @@ export function useStaking() {
   const [error, setError] = useState<string | null>(null);
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
 
-  // Calculate APY from reward per block
-  const calculateAPY = (rewardPerBlock: bigint, totalStaked: bigint): number => {
-    if (totalStaked === BigInt(0)) return 0;
-
-    const blocksPerYear = BigInt(Math.floor(365 * 24 * 60 * 60 / SECONDS_PER_BLOCK));
-    const yearlyRewards = rewardPerBlock * blocksPerYear;
-    const apy = (Number(yearlyRewards) / Number(totalStaked)) * 100;
-
-    return Math.min(apy, 1000); // Cap at 1000% to avoid display issues
+  // Calculate APY: prefer on-chain estimator (basis points); fall back to 0
+  // Default durations updated to 10m and 20m
+  const calculateAPYFromContract = async (stakingContract: any, durationSeconds: number = 10 * 60): Promise<number> => {
+    try {
+      const apyBps: bigint = await stakingContract.getEstimatedAPY(durationSeconds);
+      const apy = Number(apyBps) / 100; // basis points -> percent
+      return apy;
+    } catch {
+      return 0;
+    }
   };
 
   // Load contract information (available without wallet connection)
@@ -99,6 +105,7 @@ export function useStaking() {
       // Get contract info with error handling
       let totalStaked = BigInt(0);
       let rewardPerBlock = BigInt(0);
+      let emissionRate = BigInt(0);
       let poolLimitPerUser = BigInt(0);
       let hasUserLimit = false;
       let contractBalance = BigInt(0);
@@ -110,10 +117,13 @@ export function useStaking() {
         console.warn('Failed to get total staked:', e);
       }
 
+      // Read emissionRate (streaming) and derive per-block estimate
       try {
-        rewardPerBlock = await stakingContract.rewardPerBlock();
+        emissionRate = await stakingContract.emissionRate();
+        const perBlock = emissionRate * BigInt(SECONDS_PER_BLOCK);
+        rewardPerBlock = perBlock;
       } catch (e) {
-        console.warn('Failed to get reward per block:', e);
+        // ignore if not available
       }
 
       try {
@@ -135,8 +145,21 @@ export function useStaking() {
         console.warn('Failed to get reward balance:', e);
       }
 
-      // Calculate APY
-      const apy = calculateAPY(rewardPerBlock, totalStaked);
+      // Debug: Check actual contract periods
+      try {
+        const exitPeriod = await stakingContract.EXIT_PERIOD();
+        const rewardDelay = await stakingContract.REWARD_DELAY_PERIOD();
+        console.log('Contract EXIT_PERIOD:', Number(exitPeriod), 'seconds (', Math.floor(Number(exitPeriod) / 60), 'minutes)');
+        console.log('Contract REWARD_DELAY_PERIOD:', Number(rewardDelay), 'seconds (', Math.floor(Number(rewardDelay) / 60), 'minutes)');
+      } catch (e) {
+        console.warn('Failed to get contract periods:', e);
+      }
+
+      // Calculate APY via on-chain estimator (30D and 90D)
+      const [apy30, apy90] = await Promise.all([
+        calculateAPYFromContract(stakingContract, 10 * 60),
+        calculateAPYFromContract(stakingContract, 20 * 60)
+      ]);
 
       // Set contract info
       setContractInfo({
@@ -144,6 +167,8 @@ export function useStaking() {
         totalStakedFormatted: formatBalance(formatQuai(totalStaked)),
         rewardPerBlock,
         rewardPerBlockFormatted: formatBalance(formatQuai(rewardPerBlock)),
+        emissionRate,
+        emissionRateFormatted: formatBalance(formatQuai(emissionRate)),
         poolLimitPerUser,
         poolLimitPerUserFormatted: formatBalance(formatQuai(poolLimitPerUser)),
         hasUserLimit,
@@ -151,7 +176,9 @@ export function useStaking() {
         contractBalanceFormatted: formatBalance(formatQuai(contractBalance)),
         rewardBalance,
         rewardBalanceFormatted: formatBalance(formatQuai(rewardBalance)),
-        apy,
+        apy: apy30,
+        apy30,
+        apy90,
         currentBlock,
         userQuaiBalance: BigInt(0), // Will be set when user info is loaded
         userQuaiBalanceFormatted: '0',
@@ -208,6 +235,10 @@ export function useStaking() {
         delayedRewards: [] as DelayedReward[]
       };
 
+      // These will be corrected after processing virtual rewards
+      let finalClaimableAmount = BigInt(0);
+      let finalTotalDelayedAmount = BigInt(0);
+
       try {
         // Get comprehensive user info from new contract
         const userInfoResult = await stakingContract.getUserInfo(account.addr);
@@ -232,25 +263,55 @@ export function useStaking() {
               extendedInfo.timeUntilWithdrawalAvailable = Number(await stakingContract.timeUntilWithdrawalAvailable(account.addr));
               extendedInfo.userStatus = await stakingContract.getUserStatus(account.addr);
               
-              // Get reward information
-              pendingRewards = await stakingContract.pendingReward(account.addr);
-              extendedInfo.claimableRewards = await stakingContract.claimableRewards(account.addr);
-              extendedInfo.totalDelayedRewards = await stakingContract.totalDelayedRewards(account.addr);
-              const delayedRewardsRaw = await stakingContract.getDelayedRewards(account.addr);
+              // Get reward information (virtual delayed views)
+              // Prefer new view methods if available
+              const claimableView = await stakingContract.claimableView(account.addr);
+              extendedInfo.claimableRewards = claimableView || BigInt(0);
+
+              const lockedView = await stakingContract.lockedView(account.addr);
+              extendedInfo.totalDelayedRewards = lockedView || BigInt(0);
+
+              // Fallbacks to legacy methods if present
+              try { pendingRewards = await stakingContract.pendingReward(account.addr); } catch {}
+              try {
+                const legacyClaimable = await stakingContract.claimableRewards(account.addr);
+                if (legacyClaimable && extendedInfo.claimableRewards === BigInt(0)) extendedInfo.claimableRewards = legacyClaimable;
+              } catch {}
+              try {
+                const legacyTotalDelayed = await stakingContract.totalDelayedRewards(account.addr);
+                if (legacyTotalDelayed && extendedInfo.totalDelayedRewards === BigInt(0)) extendedInfo.totalDelayedRewards = legacyTotalDelayed;
+              } catch {}
+              // For virtual delayed rewards system, create synthetic entries for display
+              // The contract uses checkpoint-based virtual calculations instead of storing individual entries
+              finalClaimableAmount = extendedInfo.claimableRewards;
+              finalTotalDelayedAmount = extendedInfo.totalDelayedRewards;
               
-              // Process delayed rewards
-              extendedInfo.delayedRewards = delayedRewardsRaw.map((reward: any) => {
-                const amount = reward.amount || BigInt(0);
-                const unlockTime = Number(reward.unlockTime) || 0;
-                const timeUntilUnlock = Math.max(0, unlockTime - Math.floor(Date.now() / 1000));
-                
-                return {
-                  amount,
-                  unlockTime,
-                  amountFormatted: formatBalance(formatQuai(amount)),
-                  timeUntilUnlock
-                };
-              });
+              // Workaround: If virtual system returns 0 but user should have claimable rewards,
+              const lockedAmount = finalTotalDelayedAmount - finalClaimableAmount;
+              extendedInfo.delayedRewards = [];
+              
+              // Create synthetic entries for display if there are rewards
+              if (finalClaimableAmount > BigInt(0)) {
+                extendedInfo.delayedRewards.push({
+                  amount: finalClaimableAmount,
+                  unlockTime: Math.floor(Date.now() / 1000) - 1, // Already unlocked
+                  amountFormatted: formatBalance(formatQuai(finalClaimableAmount)),
+                  timeUntilUnlock: 0
+                });
+              }
+              
+              if (lockedAmount > BigInt(0)) {
+                // Estimate unlock time based on reward delay period
+                const estimatedUnlockTime = Math.floor(Date.now() / 1000) + REWARD_DELAY_PERIOD;
+                extendedInfo.delayedRewards.push({
+                  amount: lockedAmount,
+                  unlockTime: estimatedUnlockTime,
+                  amountFormatted: formatBalance(formatQuai(lockedAmount)),
+                  timeUntilUnlock: REWARD_DELAY_PERIOD
+                });
+              }
+              
+              console.log('Created synthetic delayed rewards for display:', extendedInfo.delayedRewards);
             } catch (e) {
               console.warn('Failed to get extended user info:', e);
             }
@@ -266,6 +327,7 @@ export function useStaking() {
       // Get contract info with error handling
       let totalStaked = BigInt(0);
       let rewardPerBlock = BigInt(0);
+      let emissionRate = BigInt(0);
       let poolLimitPerUser = BigInt(0);
       let hasUserLimit = false;
       let contractBalance = BigInt(0);
@@ -277,10 +339,13 @@ export function useStaking() {
         console.warn('Failed to get total staked:', e);
       }
 
+      // Read emissionRate (streaming) and derive per-block estimate
       try {
-        rewardPerBlock = await stakingContract.rewardPerBlock();
+        emissionRate = await stakingContract.emissionRate();
+        const perBlock = emissionRate * BigInt(SECONDS_PER_BLOCK);
+        rewardPerBlock = perBlock;
       } catch (e) {
-        console.warn('Failed to get reward per block:', e);
+        // ignore if not available
       }
 
       try {
@@ -302,8 +367,21 @@ export function useStaking() {
         console.warn('Failed to get reward balance:', e);
       }
 
-      // Calculate APY
-      const apy = calculateAPY(rewardPerBlock, totalStaked);
+      // Debug: Check actual contract periods
+      try {
+        const exitPeriod = await stakingContract.EXIT_PERIOD();
+        const rewardDelay = await stakingContract.REWARD_DELAY_PERIOD();
+        console.log('Contract EXIT_PERIOD:', Number(exitPeriod), 'seconds (', Math.floor(Number(exitPeriod) / 60), 'minutes)');
+        console.log('Contract REWARD_DELAY_PERIOD:', Number(rewardDelay), 'seconds (', Math.floor(Number(rewardDelay) / 60), 'minutes)');
+      } catch (e) {
+        console.warn('Failed to get contract periods:', e);
+      }
+
+      // Calculate APY via on-chain estimator (30D and 90D)
+      const [apy30, apy90] = await Promise.all([
+        calculateAPYFromContract(stakingContract, 10 * 60),
+        calculateAPYFromContract(stakingContract, 20 * 60)
+      ]);
 
       // Set user info
       setUserInfo({
@@ -311,10 +389,10 @@ export function useStaking() {
         stakedAmountFormatted: formatBalance(formatQuai(stakedAmount)),
         pendingRewards,
         pendingRewardsFormatted: formatBalance(formatQuai(pendingRewards)),
-        claimableRewards: extendedInfo.claimableRewards,
-        claimableRewardsFormatted: formatBalance(formatQuai(extendedInfo.claimableRewards)),
-        totalDelayedRewards: extendedInfo.totalDelayedRewards,
-        totalDelayedRewardsFormatted: formatBalance(formatQuai(extendedInfo.totalDelayedRewards)),
+        claimableRewards: finalClaimableAmount,
+        claimableRewardsFormatted: formatBalance(formatQuai(finalClaimableAmount)),
+        totalDelayedRewards: finalTotalDelayedAmount,
+        totalDelayedRewardsFormatted: formatBalance(formatQuai(finalTotalDelayedAmount)),
         delayedRewards: extendedInfo.delayedRewards,
         lockStartTime,
         lockEndTime: extendedInfo.lockEndTime,
@@ -337,6 +415,8 @@ export function useStaking() {
         totalStakedFormatted: formatBalance(formatQuai(totalStaked)),
         rewardPerBlock,
         rewardPerBlockFormatted: formatBalance(formatQuai(rewardPerBlock)),
+        emissionRate,
+        emissionRateFormatted: formatBalance(formatQuai(emissionRate)),
         poolLimitPerUser,
         poolLimitPerUserFormatted: formatBalance(formatQuai(poolLimitPerUser)),
         hasUserLimit,
@@ -344,7 +424,9 @@ export function useStaking() {
         contractBalanceFormatted: formatBalance(formatQuai(contractBalance)),
         rewardBalance,
         rewardBalanceFormatted: formatBalance(formatQuai(rewardBalance)),
-        apy,
+        apy: apy30,
+        apy30,
+        apy90,
         currentBlock,
         userQuaiBalance,
         userQuaiBalanceFormatted: formatBalance(formatQuai(userQuaiBalance)),
@@ -358,7 +440,7 @@ export function useStaking() {
   }, [account, loadContractInfo]);
 
   // Deposit tokens
-  const deposit = useCallback(async (amount: string) => {
+  const deposit = useCallback(async (amount: string, durationSeconds: number = 10 * 60) => {
     if (!account?.addr || !web3Provider) {
       setError('Please connect your wallet');
       return;
@@ -392,8 +474,8 @@ export function useStaking() {
         }
       }
 
-      // Send deposit transaction with value
-      const tx = await stakingContract.deposit({
+      // Send deposit transaction with duration and value
+      const tx = await stakingContract.deposit(durationSeconds, {
         value: depositAmount,
         gasLimit: 500000
       });
@@ -565,12 +647,70 @@ export function useStaking() {
       const signer = await web3Provider.getSigner();
       const stakingContract = new Contract(STAKING_CONTRACT_ADDRESS, SmartChefNativeABI, signer);
 
+      // Get balance before claim
+      const balanceBefore = await web3Provider.getBalance(account.addr);
+      const claimableBeforeClaim = userInfo.claimableRewards;
+      
+      // Check contract reward balance
+      const contractRewardBalance = await stakingContract.getRewardBalance();
+      
+      console.log('Claim transaction debug:', {
+        userAddress: account.addr,
+        balanceBefore: formatQuai(balanceBefore),
+        claimableAmount: formatQuai(claimableBeforeClaim),
+        contractRewardBalance: formatQuai(contractRewardBalance),
+        contractAddress: STAKING_CONTRACT_ADDRESS
+      });
+
       // Send claim transaction (this will add pending rewards to delayed and claim claimable)
       const tx = await stakingContract.claimRewards({ gasLimit: 500000 });
       setTransactionHash(tx.hash);
+      
+      console.log('Claim transaction sent:', tx.hash);
 
       // Wait for confirmation
-      await tx.wait();
+      const receipt = await tx.wait();
+      
+      console.log('Claim transaction confirmed:', {
+        txHash: tx.hash,
+        status: receipt.status,
+        gasUsed: receipt.gasUsed?.toString(),
+        blockNumber: receipt.blockNumber
+      });
+
+      // Parse events to see if RewardClaimed was emitted
+      // Optional: parse logs if available (best-effort)
+      try {
+        const found = receipt.logs?.some((log: any) => {
+          try {
+            const parsed = stakingContract.interface.parseLog(log);
+            if (parsed && parsed.name === 'RewardClaimed') {
+              console.log('RewardClaimed event found:', {
+                user: parsed.args?.user,
+                amount: formatQuai(parsed.args?.amount || 0)
+              });
+              return true;
+            }
+            return false;
+          } catch {
+            return false;
+          }
+        });
+        if (!found) console.warn('No RewardClaimed event found in transaction receipt');
+      } catch (e) {
+        console.warn('Log parsing skipped:', e);
+      }
+
+      // Check balance after claim
+      const balanceAfter = await web3Provider.getBalance(account.addr);
+      const balanceChange = balanceAfter - balanceBefore;
+      
+      console.log('Balance change after claim:', {
+        balanceBefore: formatQuai(balanceBefore),
+        balanceAfter: formatQuai(balanceAfter),
+        balanceChange: formatQuai(balanceChange),
+        expectedClaimAmount: formatQuai(claimableBeforeClaim)
+      });
 
       // Reload staking info
       await loadStakingInfo();

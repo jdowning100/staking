@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useStaking } from '@/lib/hooks/useStaking';
 import { StakingInfo } from '@/components/ui/staking-info';
@@ -124,6 +125,7 @@ export default function StakePage() {
   const { account } = useContext(StateContext);
   const [selectedPeriod, setSelectedPeriod] = useState(0);
   const [showDetails, setShowDetails] = useState(false);
+  const [selectedStakePeriod, setSelectedStakePeriod] = useState<0 | 1>(0); // 0 for 10 min, 1 for 20 min
 
   // Use real staking hook for native QUAI
   const staking = useStaking();
@@ -156,7 +158,8 @@ export default function StakePage() {
     );
   }
 
-  const currentPeriod = pool.lockPeriods[selectedPeriod];
+  const safeIndex = Math.max(0, Math.min(selectedPeriod, pool.lockPeriods.length - 1));
+  const currentPeriod = pool.lockPeriods[safeIndex];
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) {
@@ -193,16 +196,49 @@ export default function StakePage() {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center">
-                <div className="text-lg font-bold text-green-400">
-                  {isRealStaking && staking.contractInfo ?
-                    `${staking.contractInfo.apy.toFixed(1)}%` :
-                    isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
-                      `${lpStaking.poolInfo.poolMetrics.apr >= 1000 ?
-                        Math.round(lpStaking.poolInfo.poolMetrics.apr).toLocaleString() :
-                        lpStaking.poolInfo.poolMetrics.apr.toFixed(1)}%` :
-                      `${currentPeriod.apr.toFixed(1)}%`}
+                <div className="text-lg font-bold text-white">
+                  {isRealStaking && staking.contractInfo ? (
+                    <span>
+                      {selectedStakePeriod === 0
+                        ? (staking.contractInfo.apy30 ?? staking.contractInfo.apy).toLocaleString('en-US', { maximumFractionDigits: 1 })
+                        : (staking.contractInfo.apy90 ?? staking.contractInfo.apy).toLocaleString('en-US', { maximumFractionDigits: 1 })
+                      }%
+                    </span>
+                  ) : isRealLPPool && lpStaking.poolInfo?.poolMetrics ? (
+                    `${lpStaking.poolInfo.poolMetrics.apr >= 1000 ?
+                      Math.round(lpStaking.poolInfo.poolMetrics.apr).toLocaleString() :
+                      lpStaking.poolInfo.poolMetrics.apr.toFixed(1)}%`
+                  ) : (
+                    `${currentPeriod.apr.toFixed(1)}%`
+                  )}
                 </div>
-                <div className="text-xs text-[#666666]">APR</div>
+                <div className="text-xs text-[#666666] mb-1">Stake Period / APR</div>
+                {isRealStaking && (
+                  <div className="flex justify-center gap-1">
+                    <button
+                      onClick={() => setSelectedStakePeriod(0)}
+                      className={cn(
+                        "px-2 py-0.5 rounded text-xs font-medium transition-colors",
+                        selectedStakePeriod === 0
+                          ? "bg-red-900/50 text-white border border-red-700"
+                          : "bg-[#222222] text-[#666666] hover:text-[#999999]"
+                      )}
+                    >
+                      10m
+                    </button>
+                    <button
+                      onClick={() => setSelectedStakePeriod(1)}
+                      className={cn(
+                        "px-2 py-0.5 rounded text-xs font-medium transition-colors",
+                        selectedStakePeriod === 1
+                          ? "bg-red-900/50 text-white border border-red-700"
+                          : "bg-[#222222] text-[#666666] hover:text-[#999999]"
+                      )}
+                    >
+                      20m
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
@@ -216,19 +252,25 @@ export default function StakePage() {
               </div>
               <div className="text-center">
                 <div className="text-lg font-bold text-white">
-                  {isRealStaking || isRealLPPool ? `${Math.floor(LOCK_PERIOD / 3600)} Hour` : `${currentPeriod.days} Days`}
-                </div>
-                <div className="text-xs text-[#666666]">Lock Period</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-bold text-white">
-                  {isRealStaking ? `${Math.floor(REWARD_DELAY_PERIOD/3600)}h / ${Math.floor(EXIT_PERIOD/3600)}h` :
+                  {isRealStaking ? `${Math.floor(REWARD_DELAY_PERIOD / 60)} min` :
                     isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
                       lpStaking.poolInfo.poolMetrics.activePositions :
                       `${currentPeriod.multiplier}x`}
                 </div>
                 <div className="text-xs text-[#666666]">
-                  {isRealStaking ? "Reward Delay / Exit Period" :
+                  {isRealStaking ? "Reward Vesting" :
+                    isRealLPPool ? "Active Positions" : "Multiplier"}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-white">
+                  {isRealStaking ? `${Math.floor(EXIT_PERIOD / 60)} min` :
+                    isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
+                      lpStaking.poolInfo.poolMetrics.activePositions :
+                      `${currentPeriod.multiplier}x`}
+                </div>
+                <div className="text-xs text-[#666666]">
+                  {isRealStaking ? "Exit Period" :
                     isRealLPPool ? "Active Positions" : "Multiplier"}
                 </div>
               </div>
@@ -258,7 +300,7 @@ export default function StakePage() {
               </div>
             )}
           </CardContent>
-          
+
           {/* Detailed Information */}
           {showDetails && isRealStaking && staking.contractInfo && (
             <CardContent className="pt-0 border-t border-[#333333]">
@@ -313,6 +355,8 @@ export default function StakePage() {
           )}
         </Card>
 
+        {/* (Stake Period selector removed from manage page) */}
+
         {/* Real Staking Interface for Native QUAI */}
         {isRealStaking ? (
           <StakingInfo
@@ -322,7 +366,7 @@ export default function StakePage() {
             isTransacting={staking.isTransacting}
             error={staking.error}
             transactionHash={staking.transactionHash}
-            onDeposit={staking.deposit}
+            onDeposit={(amount: string) => staking.deposit(amount, selectedStakePeriod === 0 ? 600 : 1200)}
             onRequestWithdraw={staking.requestWithdraw}
             onExecuteWithdraw={staking.executeWithdraw}
             onCancelWithdraw={staking.cancelWithdraw}

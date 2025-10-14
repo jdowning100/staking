@@ -25,8 +25,8 @@ export default function HowToStake() {
                   <p className="text-[#999999] mb-2">
                     You need to have Pelagus wallet installed in your browser to interact with the Quai Network.
                   </p>
-                  <a 
-                    href="https://chromewebstore.google.com/detail/pelagus/nhccebmfjcbhghphpclcfdkkekheegop" 
+                  <a
+                    href="https://chromewebstore.google.com/detail/pelagus/nhccebmfjcbhghphpclcfdkkekheegop"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -35,7 +35,7 @@ export default function HowToStake() {
                     </Button>
                   </a>
                 </div>
-                
+
                 <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-4">
                   <h3 className="text-lg font-medium text-red-9 mb-2">2. QUAI Tokens</h3>
                   <p className="text-[#999999]">
@@ -105,7 +105,7 @@ export default function HowToStake() {
               <div className="bg-[#0a0a0a] border border-[#333333] rounded-lg p-6 space-y-4">
                 <div className="space-y-2">
                   <h3 className="text-lg font-medium text-white flex items-center gap-2">
-                    🔒 Lock Period (1 Hour)
+                    🔒 Stake Period (1 Hour)
                   </h3>
                   <p className="text-[#999999]">
                     When you stake QUAI, your tokens are locked for 1 hour. During this time, you cannot request withdrawals, but you continue to earn rewards.
@@ -114,7 +114,7 @@ export default function HowToStake() {
 
                 <div className="space-y-2">
                   <h3 className="text-lg font-medium text-white flex items-center gap-2">
-                    ⏰ Reward Delay (1 Hour)
+                    ⏰ Reward Vesting (1 Hour)
                   </h3>
                   <p className="text-[#999999]">
                     All rewards are delayed by 1 hour before they can be claimed. This prevents immediate dumping and helps protect token value.
@@ -151,21 +151,21 @@ export default function HowToStake() {
                     Stake for longer periods to maximize your rewards. The lock mechanism ensures committed stakers earn the best returns.
                   </p>
                 </div>
-                
+
                 <div className="bg-green-900/20 border border-green-900/50 rounded-lg p-4">
                   <h3 className="text-lg font-medium text-green-400 mb-2">⚡ Gas Optimization</h3>
                   <p className="text-[#999999] text-sm">
                     Batch your transactions when possible. Claiming rewards and re-staking in one session saves on gas fees.
                   </p>
                 </div>
-                
+
                 <div className="bg-purple-900/20 border border-purple-900/50 rounded-lg p-4">
                   <h3 className="text-lg font-medium text-purple-400 mb-2">📊 Monitor APY</h3>
                   <p className="text-[#999999] text-sm">
                     Keep an eye on the APY as it can change based on the total staked amount and reward distribution.
                   </p>
                 </div>
-                
+
                 <div className="bg-amber-900/20 border border-amber-900/50 rounded-lg p-4">
                   <h3 className="text-lg font-medium text-amber-400 mb-2">🔄 Auto-Compound</h3>
                   <p className="text-[#999999] text-sm">

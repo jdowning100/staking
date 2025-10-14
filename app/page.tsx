@@ -147,9 +147,9 @@ const lpStakingPools = [
   },
 ];
 
-const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoading }: { 
-  pool: typeof quaiStakingPool | typeof lpStakingPools[0], 
-  stakingData?: any, 
+const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoading }: {
+  pool: typeof quaiStakingPool | typeof lpStakingPools[0],
+  stakingData?: any,
   lpStakingData?: any,
   isStakingLoading?: boolean,
   isLPLoading?: boolean
@@ -186,23 +186,23 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
     const initializeParticles = () => {
       const rect = button.getBoundingClientRect();
       const particleCount = 16; // More particles
-      
+
       for (let i = 0; i < particleCount; i++) {
         const sizes = ['size-small', 'size-medium', 'size-large'];
         const size = sizes[Math.floor(Math.random() * sizes.length)];
-        
+
         const particle = document.createElement('div');
         particle.className = `particle ${size}`;
         particle.style.opacity = '0';
-        
+
         // More spread out positioning - use padding from edges
         const padding = 20;
         const x = padding + Math.random() * (rect.width - padding * 2);
         const y = padding + Math.random() * (rect.height - padding * 2);
-        
+
         particle.style.left = `${x}px`;
         particle.style.top = `${y}px`;
-        
+
         canvas.appendChild(particle);
 
         const particleData = {
@@ -224,16 +224,16 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
     const createBurstParticle = (x: number, y: number) => {
       const sizes = ['size-small', 'size-medium', 'size-large'];
       const size = sizes[Math.floor(Math.random() * sizes.length)];
-      
+
       const particle = document.createElement('div');
       particle.className = `particle ${size}`;
-      
+
       const vx = (Math.random() - 0.5) * 12;
       const vy = (Math.random() - 0.5) * 12;
-      
+
       particle.style.left = `${x}px`;
       particle.style.top = `${y}px`;
-      
+
       canvas.appendChild(particle);
 
       const particleData = {
@@ -249,7 +249,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
       };
 
       particlesRef.current.push(particleData);
-      
+
       // Remove burst particle after some time
       setTimeout(() => {
         const index = particlesRef.current.findIndex(p => p.id === particleData.id);
@@ -264,48 +264,48 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
 
     const updateParticles = () => {
       const rect = button.getBoundingClientRect();
-      
+
       particlesRef.current.forEach((particle, index) => {
         // Check if this is a pre-loaded particle (id < 25) or burst particle
         const isPreLoaded = particle.id < 25;
-        
+
         if (isPreLoaded && isHovered.current) {
           // Cape/swarm physics - particles trail behind mouse with lag
           const dx = mousePos.current.x - particle.x;
           const dy = mousePos.current.y - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          
+
           // Each particle has different lag/responsiveness for swarm effect
           const lag = 0.015 + (index * 0.008); // Slightly reduced responsiveness for more spread
           const followDistance = 30 + (index * 8); // Larger follow distances for more spread
-          
+
           // Only apply force if mouse is moving or particle is too far
           if (isMouseMoving.current || distance > followDistance) {
             // Attraction force towards mouse with individual particle lag
             particle.vx += dx * lag;
             particle.vy += dy * lag;
-            
+
             // Add more turbulence for natural swarm movement and spread
             if (isMouseMoving.current) {
               particle.vx += (Math.random() - 0.5) * 0.8;
               particle.vy += (Math.random() - 0.5) * 0.8;
             }
           }
-          
+
           // Swarm cohesion - particles slightly attract to nearby particles
           particlesRef.current.forEach((otherParticle, otherIndex) => {
             if (otherIndex !== index && otherParticle.id < 25) {
               const pdx = otherParticle.x - particle.x;
               const pdy = otherParticle.y - particle.y;
               const pDistance = Math.sqrt(pdx * pdx + pdy * pdy);
-              
+
               // Increased cohesion distance but reduced force for more spread
               if (pDistance > 0 && pDistance < 50) {
                 const cohesionForce = 0.003;
                 particle.vx += (pdx / pDistance) * cohesionForce;
                 particle.vy += (pdy / pDistance) * cohesionForce;
               }
-              
+
               // Add separation force to prevent clustering
               if (pDistance > 0 && pDistance < 25) {
                 const separationForce = 0.01;
@@ -314,7 +314,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
               }
             }
           });
-          
+
           // Apply drag/friction based on whether mouse is moving
           const friction = isMouseMoving.current ? 0.90 : 0.85;
           particle.vx *= friction;
@@ -325,10 +325,10 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
           particle.vy *= 0.98;
           particle.vy += 0.1; // Gravity
         }
-        
+
         particle.x += particle.vx;
         particle.y += particle.vy;
-        
+
         // Boundary collision
         if (particle.x <= 0 || particle.x >= rect.width - 8) {
           particle.vx *= -0.8;
@@ -338,12 +338,12 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
           particle.vy *= -0.8;
           particle.y = Math.max(0, Math.min(rect.height - 8, particle.y));
         }
-        
+
         // Update position
         particle.element.style.left = `${particle.x}px`;
         particle.element.style.top = `${particle.y}px`;
       });
-      
+
       if (isHovered.current) {
         animationRef.current = requestAnimationFrame(updateParticles);
       }
@@ -354,14 +354,14 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
       prevMousePos.current = { ...mousePos.current };
       mousePos.current.x = e.clientX - rect.left;
       mousePos.current.y = e.clientY - rect.top;
-      
+
       // Check if mouse actually moved
       const dx = mousePos.current.x - prevMousePos.current.x;
       const dy = mousePos.current.y - prevMousePos.current.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      
+
       isMouseMoving.current = distance > 1; // Consider moving if moved more than 1px
-      
+
       // Reset mouse moving flag after a short delay
       if (mouseTimeoutRef.current) {
         clearTimeout(mouseTimeoutRef.current);
@@ -409,7 +409,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
       const rect = button.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      
+
       // Create burst effect
       for (let i = 0; i < 16; i++) {
         setTimeout(() => {
@@ -419,14 +419,14 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
           );
         }, i * 12);
       }
-      
+
       // Disperse existing particles
       particlesRef.current.forEach(particle => {
         const dx = particle.x - x;
         const dy = particle.y - y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const force = 100 / (distance + 1);
-        
+
         particle.vx += (dx / distance) * force;
         particle.vy += (dy / distance) * force;
         particle.element.classList.add('dispersing');
@@ -461,35 +461,40 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
     return num.toLocaleString();
   };
 
-  const currentPeriod = pool.lockPeriods[selectedPeriod];
-  
+  const safeIndex = Math.max(0, Math.min(selectedPeriod, pool.lockPeriods.length - 1));
+  const currentPeriod = pool.lockPeriods[safeIndex];
+
   // Native QUAI uses the contract's lock mechanism, other pools use selectable periods
   const isNativeQuai = pool.id === 'native-quai';
   const isWQIQuaiLP = pool.id === 'wqi-quai';
   const hasRealLPData = isWQIQuaiLP && lpStakingData && (LP_POOLS as any)[pool.id]?.isActive;
-  
+
   // Use real data for native QUAI and WQI/QUAI LP, mock for others
   let userStake;
   if (isNativeQuai && stakingData) {
     userStake = {
       staked: Number(stakingData.userInfo?.stakedAmountFormatted || 0),
-      earned: Number(stakingData.userInfo?.pendingRewardsFormatted || 0),
+      earned:
+        Number(stakingData.userInfo?.claimableRewardsFormatted || 0) +
+        Number(stakingData.userInfo?.totalDelayedRewardsFormatted || 0),
       lockPeriod: stakingData.userInfo?.isLocked ? 30 : null,
       endDate: stakingData.userInfo?.lockEndTime ? new Date(stakingData.userInfo.lockEndTime * 1000).toLocaleDateString() : null
     };
   } else if (hasRealLPData && lpStakingData.stakingInfo) {
     userStake = {
       staked: Number(lpStakingData.stakingInfo.stakedAmountFormatted || 0),
-      earned: Number(lpStakingData.stakingInfo.pendingRewardsFormatted || 0),
+      earned:
+        Number(lpStakingData.stakingInfo.claimableRewardsFormatted || 0) +
+        Number(lpStakingData.stakingInfo.totalDelayedRewardsFormatted || 0),
       lockPeriod: lpStakingData.stakingInfo.isLocked ? 30 : null,
-      endDate: lpStakingData.stakingInfo.lockStartTime ? 
-        new Date((lpStakingData.stakingInfo.lockStartTime + 30 * 24 * 60 * 60) * 1000).toLocaleDateString() : 
+      endDate: lpStakingData.stakingInfo.lockStartTime ?
+        new Date((lpStakingData.stakingInfo.lockStartTime + 30 * 24 * 60 * 60) * 1000).toLocaleDateString() :
         null
     };
   } else {
     userStake = userStakingData[pool.id as keyof typeof userStakingData];
   }
-  
+
   const hasStake = userStake.staked > 0;
 
   return (
@@ -504,7 +509,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4 flex-grow flex flex-col">
         {/* APR Display */}
         <div>
@@ -525,9 +530,21 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                 {/* Native QUAI APR Display */}
                 {isNativeQuai ? (
                   stakingData?.contractInfo ? (
-                    <span className="text-xl font-bold text-white">
-                      {stakingData.contractInfo.apy.toFixed(1)}%
-                    </span>
+                    (() => {
+                      const totalStakedNum = Number(stakingData.contractInfo.totalStakedFormatted || 0);
+                      const rewardsNum = Number(stakingData.contractInfo.rewardBalanceFormatted || 0);
+                      if (totalStakedNum <= 0 && rewardsNum > 0) {
+                        return (
+                          <span className="text-sm text-[#999999]">APR appears after first stake</span>
+                        );
+                      }
+                      const apyVal = selectedPeriod === 0
+                        ? (stakingData.contractInfo.apy30 ?? stakingData.contractInfo.apy)
+                        : (stakingData.contractInfo.apy90 ?? stakingData.contractInfo.apy);
+                      return (
+                        <span className="text-xl font-bold text-white">{apyVal.toLocaleString('en-US', { maximumFractionDigits: 1 })}%</span>
+                      );
+                    })()
                   ) : (
                     <div className="flex items-center gap-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
@@ -540,9 +557,9 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                     lpStakingData.poolMetrics ? (
                       <>
                         <span className="text-xl font-bold text-white">
-                          {lpStakingData.poolMetrics.apr >= 1000 ? 
-                            Math.round(lpStakingData.poolMetrics.apr).toLocaleString() : 
-                            lpStakingData.poolMetrics.apr.toFixed(1)}%
+                          {lpStakingData.poolMetrics.apr >= 1000 ?
+                            Math.round(lpStakingData.poolMetrics.apr).toLocaleString() :
+                            lpStakingData.poolMetrics.apr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%
                         </span>
                       </>
                     ) : (
@@ -555,10 +572,10 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                     /* Mock LP Pool APR */
                     <>
                       <span className="text-xl font-bold text-white">
-                        {currentPeriod.apr.toFixed(1)}%
+                        {currentPeriod.apr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%
                       </span>
                       <span className="text-sm text-[#999999]">
-                        ~ {(currentPeriod.apr * 1.2).toFixed(1)}%
+                        ~ {(currentPeriod.apr * 1.2).toLocaleString('en-US', { maximumFractionDigits: 1 })}%
                       </span>
                     </>
                   )
@@ -568,17 +585,33 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
           </div>
         </div>
 
-        {/* Lock Period Selector or Lock Info */}
+        {/* Stake Periods selector (now also for native and WQI/QUAI LP) */}
         {isNativeQuai || isWQIQuaiLP ? (
           <div>
-            <div className="text-sm font-semibold text-white mb-1">Lock & Delay Mechanism</div>
+            <div className="text-sm font-semibold text-white mb-2">Stake Periods:
+              {[10, 20].map((mins, index) => (
+                <button
+                  key={mins}
+                  onClick={() => setSelectedPeriod(index)}
+                  className={cn(
+                    "ml-2 px-2 py-1 rounded text-xs font-medium transition-colors",
+                    selectedPeriod === index
+                      ? "bg-slate-700 text-white"
+                      : "bg-[#333333] text-[#999999] hover:bg-[#444444]"
+                  )}
+                >
+                  {mins}m
+                </button>
+              ))}
+            </div>
+            <div className="text-sm font-semibold text-white mb-1">Reward Vesting & Exit Window</div>
             <div className="text-xs text-[#999999]">
-              {Math.floor(LOCK_PERIOD/3600)}h lock • {Math.floor(REWARD_DELAY_PERIOD/3600)}h reward delay • {Math.floor(EXIT_PERIOD/3600)}h exit window
+              {Math.floor(REWARD_DELAY_PERIOD / 60)}m reward vesting • {Math.floor(EXIT_PERIOD / 60)}m exit window
             </div>
           </div>
         ) : (
           <div>
-            <div className="text-sm font-semibold text-white mb-2">Stake Periods: 
+            <div className="text-sm font-semibold text-white mb-2">Stake Periods:
               {pool.lockPeriods.map((period, index) => (
                 <button
                   key={period.days}
@@ -675,12 +708,12 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
 
         {/* Spacer to push button to bottom */}
         <div className="flex-grow"></div>
-        
+
         {/* Stake Button */}
         <div className="pt-4">
           <div className="rotating-border-wrapper">
             <Link href={`/stake/${pool.id}${hasStake ? '?mode=manage' : ''}`} className="block">
-              <Button 
+              <Button
                 ref={buttonRef}
                 className="w-full h-16 bg-transparent hover:bg-black/30 text-white font-medium rounded border-0 particle-button"
               >
@@ -712,20 +745,31 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
               {isNativeQuai || isWQIQuaiLP ? (
                 <>
                   <div className="flex justify-between">
-                    <span className="text-[#999999]">Lock Period:</span>
-                    <span className="text-white">{Math.floor(LOCK_PERIOD/3600)} hour (testing)</span>
+                    <span className="text-[#999999]">Stake Period:</span>
+                    <span className="text-white">
+                      {LOCK_PERIOD >= 3600 
+                        ? `${Math.floor(LOCK_PERIOD / 3600)} hour${Math.floor(LOCK_PERIOD / 3600) !== 1 ? 's' : ''}`
+                        : `${Math.floor(LOCK_PERIOD / 60)} minute${Math.floor(LOCK_PERIOD / 60) !== 1 ? 's' : ''}`
+                      } (testing)
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#999999]">Reward Delay:</span>
-                    <span className="text-yellow-400">{Math.floor(REWARD_DELAY_PERIOD/3600)} hour delay before claim</span>
+                    <span className="text-[#999999]">Reward Vesting:</span>
+                    <span className="text-yellow-400">
+                      {REWARD_DELAY_PERIOD >= 3600
+                        ? `${Math.floor(REWARD_DELAY_PERIOD / 3600)} hour${Math.floor(REWARD_DELAY_PERIOD / 3600) !== 1 ? 's' : ''} delay before claim`
+                        : `${Math.floor(REWARD_DELAY_PERIOD / 60)} minute${Math.floor(REWARD_DELAY_PERIOD / 60) !== 1 ? 's' : ''} delay before claim`
+                      }
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#999999]">Exit Window:</span>
-                    <span className="text-orange-400">{Math.floor(EXIT_PERIOD/3600)} hour wait to complete withdrawal</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#999999]">Early Exit Penalty:</span>
-                    <span className="text-red-400">Forfeit all pending rewards</span>
+                    <span className="text-orange-400">
+                      {EXIT_PERIOD >= 3600
+                        ? `${Math.floor(EXIT_PERIOD / 3600)} hour${Math.floor(EXIT_PERIOD / 3600) !== 1 ? 's' : ''} wait to complete withdrawal`
+                        : `${Math.floor(EXIT_PERIOD / 60)} minute${Math.floor(EXIT_PERIOD / 60) !== 1 ? 's' : ''} wait to complete withdrawal`
+                      }
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#999999]">During Exit:</span>
@@ -787,7 +831,7 @@ export default function Home() {
             <TabsTrigger value="stake-quai">Stake QUAI</TabsTrigger>
             <TabsTrigger value="lp-staking">LP Staking</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="stake-quai" className="space-y-6">
             {/* Header */}
             <div className="text-center mb-8">
@@ -800,19 +844,19 @@ export default function Home() {
                 .
               </p>
             </div>
-            
+
             {/* Single QUAI Staking Pool */}
             <div className="flex justify-center">
               <div className="w-full max-w-lg">
-                <PoolCard 
-                  pool={quaiStakingPool} 
+                <PoolCard
+                  pool={quaiStakingPool}
                   stakingData={staking}
                   isStakingLoading={staking.isLoading}
                 />
               </div>
             </div>
           </TabsContent>
-          
+
           <TabsContent value="lp-staking" className="space-y-6">
             {/* Header */}
             <div className="text-center mb-8">
@@ -825,13 +869,13 @@ export default function Home() {
                 {' '}revenue.
               </p>
             </div>
-            
+
             {/* LP Pools Grid - Single Row */}
             <div className="grid grid-cols-3 gap-6">
               {lpStakingPools.map((pool) => (
-                <PoolCard 
-                  key={pool.id} 
-                  pool={pool} 
+                <PoolCard
+                  key={pool.id}
+                  pool={pool}
                   lpStakingData={pool.id === 'wqi-quai' ? wqiQuaiLPStaking.poolInfo : undefined}
                   isLPLoading={pool.id === 'wqi-quai' ? wqiQuaiLPStaking.isLoading : false}
                 />

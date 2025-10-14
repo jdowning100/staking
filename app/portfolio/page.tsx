@@ -326,7 +326,8 @@ export default function Portfolio() {
   const realQuaiClaimable = staking.userInfo ? Number(staking.userInfo.claimableRewardsFormatted) : 0;
   const realQuaiDelayed = staking.userInfo ? Number(staking.userInfo.totalDelayedRewardsFormatted) : 0;
   const realQuaiPending = staking.userInfo ? Number(staking.userInfo.pendingRewardsFormatted) : 0;
-  const realQuaiTotalEarned = realQuaiClaimable + realQuaiDelayed + realQuaiPending; // Total earned = claimable + delayed + pending
+  // Earned reflects claimable (unlocked) + delayed (locked) rewards; excludes pending
+  const realQuaiTotalEarned = realQuaiClaimable + realQuaiDelayed;
   const realQuaiApr = staking.contractInfo ? staking.contractInfo.apy : 0;
 
   // Only include positions that actually have staked amounts
@@ -363,7 +364,8 @@ export default function Portfolio() {
     Number(wqiQuaiLPStaking.poolInfo.stakingInfo.totalDelayedRewardsFormatted) : 0;
   const lpPending = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
     Number(wqiQuaiLPStaking.poolInfo.stakingInfo.pendingRewardsFormatted) : 0;
-  const realLPEarned = lpClaimable + lpDelayedTotal + lpPending;
+  // LP earned reflects claimable + delayed; excludes pending
+  const realLPEarned = lpClaimable + lpDelayedTotal;
   const realLPApr = wqiQuaiLPStaking.poolInfo?.poolMetrics?.apr || 0;
 
   if (realLPStaked > 0 && LP_POOLS['wqi-quai']?.isActive) {

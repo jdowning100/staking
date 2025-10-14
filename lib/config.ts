@@ -5,9 +5,9 @@ export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.quai.netw
 export const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS || '0x006Ac8e729d91CC84De81Df5BdB9660Fc5150309';
 
 // Staking Parameters (updated for new contract mechanics)
-export const LOCK_PERIOD = 3600; // 1 hour in seconds (for testing)
-export const REWARD_DELAY_PERIOD = 3600; // 1 hour reward delay (for testing)
-export const EXIT_PERIOD = 3600; // 1 hour exit period (for testing)
+export const LOCK_PERIOD = 600; // 10 minutes in seconds (testing)
+export const REWARD_DELAY_PERIOD = 600; // 10 minutes reward delay (testing)
+export const EXIT_PERIOD = 600; // 10 minutes exit period (testing)
 export const GRACE_PERIOD = 24 * 60 * 60; // 24 hours in seconds (legacy - not used in new contracts)
 export const BLOCKS_PER_SECOND = 0.2; // 5 second block time = 0.2 blocks per second
 export const SECONDS_PER_BLOCK = 5; // 5 seconds per block on Quai

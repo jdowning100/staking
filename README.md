@@ -93,13 +93,89 @@ yarn dev
 | `NEXT_PUBLIC_TOKEN_SYMBOL`             | Token symbol                    | QUAI                                       |
 | `NEXT_PUBLIC_TOKEN_DECIMALS`           | Token decimals                  | 18                                         |
 
-## Smart Contract
+## Smart Contracts
 
-The site interacts with a MultiBeneficiaryVesting contract that has the following key functions:
+This app now includes a native staking contract (`SmartChefNative`) that streams rewards linearly over time, and optional LP staking. The frontend reads APR directly from the contract via `getEstimatedAPY(duration)` for 30D and 90D lock periods.
 
-- `beneficiaries(address)`: Returns vesting schedule for a given address
-- `getClaimableAmount(address)`: Returns the amount of tokens currently available for claiming
-- `release()`: Allows a beneficiary to claim their vested tokens
+### Native Staking (SmartChefNative) – Streaming Rewards
+
+Key concepts:
+
+- **Streaming model:** Rewards are allocated at a constant `emissionRate` (QUAI per second) to active stakers, capped by the available reward budget (contract's native balance minus reserved principal).
+- **Funding:** Send native QUAI to the contract to increase the reward budget (runway). Funding alone does not change APR; APR depends on `emissionRate` vs active stake.
+- **APR:** The app calls `getEstimatedAPY(30d)` and `getEstimatedAPY(90d)` to display 30D and 90D APR. 90D APR includes the contract’s lock-duration multiplier.
+- **Delay/Exit:** Claiming moves earned rewards into a delayed bucket that unlocks after `REWARD_DELAY_PERIOD`. After unlock, a subsequent claim pays out (without touching principal or exit liquidity).
+
+### End-to-End Deployment Steps
+
+1) Compile
+
+```
+npx hardhat clean && npx hardhat compile
+```
+
+2) Deploy native staking (writes deployment info and optional metadata)
+
+```
+node contracts/deploy.js
+```
+
+3) Fund rewards (send native QUAI to the contract address)
+
+- Use your wallet or a simple script/CLI to send QUAI to the deployed contract.
+
+4) Set the emission rate (choose one)
+
+- By duration (stream current budget over a target window, e.g., ~30 days):
+
+```
+node contracts/set-emission.js <CONTRACT_ADDRESS> --byDuration 2592000
+```
+
+- Fixed rate (explicit QUAI per second):
+
+```
+# Example: ~10 QUAI over 30 days ≈ 0.000003858 QUAI/s
+node contracts/set-emission.js <CONTRACT_ADDRESS> --rate 0.000003858
+```
+
+5) Verify on-chain APR and stream
+
+```
+node contracts/read-apy.js <CONTRACT_ADDRESS>
+# Prints emissionRate (wei/s), totalStaked, rewardBalance, and APR 30D/90D (bps)
+```
+
+6) Point the app to the deployed address and restart
+
+```
+# .env (or .env.local)
+NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS=<CONTRACT_ADDRESS>
+
+# Restart dev/build to pick up env changes
+yarn dev   # or
+yarn build && yarn start
+```
+
+7) Ongoing operations (post top-ups)
+
+- Top-ups increase runway; APR changes when you adjust `emissionRate`.
+- After adding rewards, you can rebalance the stream back to a target runway:
+
+```
+node contracts/set-emission.js <CONTRACT_ADDRESS> --byDuration 2592000   # 30 days
+```
+
+### Pending Rewards Behavior (streaming)
+
+- `pendingReward(address)` reflects only rewards streamed since the last pool update; it no longer attributes the entire reward budget immediately.
+- Claiming (when not in exit) moves streamed pending into the delayed list with unlock time = now + `REWARD_DELAY_PERIOD`. After unlock, a subsequent claim pays out from the available reward budget.
+
+### Helper Scripts
+
+- `contracts/set-emission.js` – Set emission by duration or fixed rate.
+- `contracts/read-apy.js` – Inspect `emissionRate`, `totalStaked`, `rewardBalance`, and `getEstimatedAPY` (30D/90D).
+
 
 ## Contributing
 

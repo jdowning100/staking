@@ -491,6 +491,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            {/* (No stake period selector in manage view) */}
             {/* User Staking Info (list view like native) */}
             <div className="pt-1 space-y-2">
               <div className="flex justify-between">
