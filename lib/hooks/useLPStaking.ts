@@ -224,7 +224,7 @@ export function useLPStaking(poolId: string) {
           try {
             pendingRewards = await stakingContract.pendingReward(account.addr);
           } catch (e) {
-            console.warn('LP pendingReward() unavailable on staking contract, using 0');
+            console.warn('LP pendingReward() unavailable on staking contract, using 0', e);
           }
 
           // Attempt to gather lock and exit details
@@ -312,7 +312,7 @@ export function useLPStaking(poolId: string) {
             lockDurationSeconds,
             isLocked,
             isInExitPeriod,
-            canRequestWithdraw: !isInExitPeriod,
+            canRequestWithdraw: !isInExitPeriod && timeUntilUnlock === 0,
             canExecuteWithdraw: isInExitPeriod && timeUntilWithdrawalAvailable === 0,
             timeUntilUnlock,
             timeUntilWithdrawalAvailable,
@@ -525,7 +525,7 @@ export function useLPStaking(poolId: string) {
       let lpDecimals = 18;
       try {
         lpDecimals = (poolInfo?.lpToken?.decimals ?? await (new Contract(poolConfig.lpToken, ERC20ABI, signer)).decimals()) as number;
-      } catch {}
+      } catch { }
       const amountWei = parseUnits(amount, lpDecimals);
 
       // Check if we need to approve LP tokens first

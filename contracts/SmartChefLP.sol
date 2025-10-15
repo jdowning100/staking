@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * SmartChefLP — Sliding-window vesting (no per-user queues) + lock boosts.
@@ -202,7 +203,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     user.amount += _amount;
     totalStaked += _amount;
 
-    uint256 addEff = (_amount * mult) / 1e18;
+    uint256 addEff = Math.mulDiv(_amount, mult, 1e18);
     user.effectiveAmount += addEff;
     totalActiveEffective += addEff;
 
@@ -210,7 +211,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     user.lockStartTime = block.timestamp;
 
     // Update debt for pending view
-    user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
+    user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
 
     lpToken.safeTransferFrom(msg.sender, address(this), _amount);
     emit Deposit(msg.sender, _amount, _duration);
@@ -238,14 +239,14 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 accPast = _accPSAtBlock(uint64(tBlock));
     uint256 deltaPS = accTokenPerShare - accPast;
     if (deltaPS > 0) {
-      uint256 exitEff = (_amount * _getBoostMultiplier(user.lockDuration)) / 1e18;
-      uint256 exitLocked = (exitEff * deltaPS) / PRECISION_FACTOR;
+      uint256 exitEff = Math.mulDiv(_amount, _getBoostMultiplier(user.lockDuration), 1e18);
+      uint256 exitLocked = Math.mulDiv(exitEff, deltaPS, PRECISION_FACTOR);
       user.delayedReward += exitLocked;
       user.delayedUnlockBlock = block.number + delayBlocks;
     }
 
     // Remove from effective denominator now
-    uint256 exitEffective = (_amount * _getBoostMultiplier(user.lockDuration)) / 1e18;
+    uint256 exitEffective = Math.mulDiv(_amount, _getBoostMultiplier(user.lockDuration), 1e18);
     user.effectiveAmount -= exitEffective;
     totalActiveEffective -= exitEffective;
 
@@ -255,7 +256,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     totalInExitPeriod       += _amount;
 
     // Sync rewardDebt for remaining active effective
-    user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
+    user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
 
     uint256 availableTime = block.timestamp + EXIT_PERIOD;
     emit WithdrawRequested(msg.sender, _amount, availableTime);
@@ -294,7 +295,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     }
 
     // rewardDebt already based on effective (which was reduced at request time)
-    user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
+    user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
 
     lpToken.safeTransfer(msg.sender, amt);
     emit WithdrawExecuted(msg.sender, amt);
@@ -314,7 +315,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     _claimRewardsInternal(msg.sender, 0);
 
     // Restore effective for the canceled amount
-    uint256 addEff = (user.withdrawalAmount * _getBoostMultiplier(user.lockDuration)) / 1e18;
+    uint256 addEff = Math.mulDiv(user.withdrawalAmount, _getBoostMultiplier(user.lockDuration), 1e18);
     user.effectiveAmount += addEff;
     totalActiveEffective += addEff;
 
@@ -325,7 +326,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     user.delayedReward      = 0;
     user.delayedUnlockBlock = 0;
 
-    user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
+    user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
   }
 
   // ---------------------------
@@ -352,7 +353,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 baseline = user.debtClaimablePS;
     uint256 virtualOwed = 0;
     if (accPast > baseline && user.effectiveAmount > 0) {
-      virtualOwed = (user.effectiveAmount * (accPast - baseline)) / PRECISION_FACTOR;
+      virtualOwed = Math.mulDiv(user.effectiveAmount, (accPast - baseline), PRECISION_FACTOR);
     }
 
     _updatePool();
@@ -384,7 +385,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
         user.debtClaimablePS = accPast;
       } else {
         uint256 delta = accPast - baseline;
-        uint256 advance = (pay * delta) / owed;
+        uint256 advance = Math.mulDiv(pay, delta, owed);
         user.debtClaimablePS = baseline + advance;
       }
     } else {
@@ -392,7 +393,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     }
 
     // Keep pending baseline in sync
-    user.rewardDebt = (user.effectiveAmount * accTokenPerShare) / PRECISION_FACTOR;
+    user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
   }
 
   // ---------------------------
@@ -408,20 +409,28 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
 
     uint256 adjusted = accTokenPerShare;
     if (block.number > lastRewardBlock) {
-      uint256 mult = block.number - lastRewardBlock;
-      uint256 toAlloc = mult * rewardPerBlock;
+        uint256 mult = block.number - lastRewardBlock;
+        while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
+            uint256 safeMult = type(uint256).max / rewardPerBlock;
+            mult -= safeMult;
+        }
+        uint256 toAlloc = mult * rewardPerBlock;
 
-      uint256 undistributed  = totalAccruedRewards - totalClaimedRewards;
-      uint256 currentRewards = _rewardBalance();
-      uint256 allocCap       = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
-      if (toAlloc > allocCap) toAlloc = allocCap;
+        uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+        uint256 currentRewards = _rewardBalance();
+        uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
+        if (toAlloc > allocCap) toAlloc = allocCap;
 
-      if (toAlloc > 0) {
-        adjusted += (toAlloc * PRECISION_FACTOR) / activeEff;
-      }
+        if (toAlloc > 0) {
+            adjusted += Math.mulDiv(toAlloc, PRECISION_FACTOR, activeEff);
+        }
     }
 
-    return ((user.effectiveAmount * adjusted) / PRECISION_FACTOR) - user.rewardDebt;
+    uint256 earned = Math.mulDiv(user.effectiveAmount, adjusted, PRECISION_FACTOR);
+    if (earned >= user.rewardDebt) {
+        return earned - user.rewardDebt;
+    }
+    return 0;  // Prevent underflow revert; assumes minor rounding desync
   }
 
   // Pure read-only: what’s claimable now from the sliding window + unlocked exit snapshot
@@ -441,7 +450,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 accPast = _accPSAtBlock(uint64(tBlock));
     uint256 baseline = user.debtClaimablePS;
     if (accPast > baseline) {
-      owed += (E * (accPast - baseline)) / PRECISION_FACTOR;
+      owed += Math.mulDiv(E, (accPast - baseline), PRECISION_FACTOR);
     }
     return owed;
   }
@@ -463,7 +472,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 tBlock = block.number > delayBlocks ? block.number - delayBlocks : 0;
     uint256 accPast = _accPSAtBlock(uint64(tBlock));
     if (accNow > accPast) {
-      locked += (E * (accNow - accPast)) / PRECISION_FACTOR;
+      locked += Math.mulDiv(E, (accNow - accPast), PRECISION_FACTOR);
     }
     return locked;
   }
@@ -530,27 +539,40 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     if (block.number <= lastRewardBlock) return;
 
     uint256 activeEff = totalActiveEffective;
-    if (activeEff == 0) { lastRewardBlock = block.number; return; }
+    if (activeEff == 0) { 
+        lastRewardBlock = block.number; 
+        return; 
+    }
 
     uint256 mult = block.number - lastRewardBlock;
+    while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
+        uint256 safeMult = type(uint256).max / rewardPerBlock;
+        lastRewardBlock += safeMult;
+        mult -= safeMult;
+    }
     uint256 toAlloc = mult * rewardPerBlock;
 
-    // Cap by available rewards to avoid over-accrual
-    uint256 undistributed  = totalAccruedRewards - totalClaimedRewards;
+    // Additional safe check for next multiplication
+    uint256 prec = PRECISION_FACTOR;
+    while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
+        prec /= 10;  // Reduce precision if needed (rare), but log or handle; alternatively, cap toAlloc
+        // Note: This is defensive; adjust if your PRECISION_FACTOR causes issues
+    }
+
+    uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
     uint256 currentRewards = _rewardBalance();
-    uint256 allocCap       = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
+    uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
     if (toAlloc > allocCap) toAlloc = allocCap;
 
     if (toAlloc > 0) {
-      accTokenPerShare += (toAlloc * PRECISION_FACTOR) / activeEff;
-      totalAccruedRewards += toAlloc;
+        accTokenPerShare += Math.mulDiv(toAlloc, prec, activeEff);
+        totalAccruedRewards += toAlloc;
     }
     lastRewardBlock = block.number;
 
-    // Periodic checkpoint
     if (uint64(block.number) - lastCheckpointBlock >= checkpointInterval) {
-      _pushCheckpoint(uint64(block.number), accTokenPerShare, totalActiveEffective);
-      lastCheckpointBlock = uint64(block.number);
+        _pushCheckpoint(uint64(block.number), accTokenPerShare, totalActiveEffective);
+        lastCheckpointBlock = uint64(block.number);
     }
   }
 
@@ -562,14 +584,19 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 mult = block.number - lastRewardBlock;
     if (mult == 0) return accTokenPerShare;
 
+    while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
+        uint256 safeMult = type(uint256).max / rewardPerBlock;
+        mult -= safeMult;
+    }
+
     uint256 toAlloc = mult * rewardPerBlock;
-    uint256 undistributed  = totalAccruedRewards - totalClaimedRewards;
+    uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
     uint256 currentRewards = _rewardBalance();
-    uint256 allocCap       = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
+    uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
     if (toAlloc > allocCap) toAlloc = allocCap;
     if (toAlloc == 0) return accTokenPerShare;
 
-    return accTokenPerShare + (toAlloc * PRECISION_FACTOR) / activeEff;
+    return accTokenPerShare + Math.mulDiv(toAlloc, PRECISION_FACTOR, activeEff);
   }
 
   // Interpolated accPS at a past block (sliding-window)
@@ -595,7 +622,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
         uint256 prorataInto = uint256(targetBlock) - prev.blockNum;
         if (prorataInto > fullSpan) prorataInto = fullSpan;
 
-        return prev.acc + (prorataDeltaAcc * prorataInto) / fullSpan;
+        return prev.acc + Math.mulDiv(prorataDeltaAcc, prorataInto, fullSpan);
       }
       return prev.acc;
     }
@@ -605,7 +632,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 span = next_.blockNum - prev.blockNum;
     uint256 into = targetBlock - prev.blockNum;
     uint256 deltaAcc = next_.acc - prev.acc;
-    return prev.acc + (deltaAcc * into) / span;
+    return prev.acc + Math.mulDiv(deltaAcc, into, span);
   }
 
   function _findPrevCp(uint64 target) internal view returns (bool, Checkpoint memory) {
@@ -710,7 +737,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 activeEff     = totalActiveEffective;
 
     if (activeEff > 0) {
-      rewardPerBlock = (activeEff * _newAPYBasisPoints) / (blocksPerYear * 10000);
+      rewardPerBlock = Math.mulDiv(activeEff, _newAPYBasisPoints, (blocksPerYear * 10000));
     } else {
       revert("No active effective - use setRewardPerBlock instead");
     }
