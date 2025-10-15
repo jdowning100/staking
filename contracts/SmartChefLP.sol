@@ -161,7 +161,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   }
 
   function _safeTransferNative(address _to, uint256 _amount) internal {
-    (bool success, ) = _to.call{ value: _amount }("");
+    (bool success, ) = _to.call{ value: _amount, gas: 2300 }("");
     require(success, "Native transfer failed");
   }
 

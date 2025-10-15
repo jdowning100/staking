@@ -802,7 +802,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   function updatePool() external { _updatePool(); }
 
   function _safeTransferNative(address _to, uint256 _amount) internal {
-    (bool success, ) = _to.call{ value: _amount }("");
+    (bool success, ) = _to.call{ value: _amount, gas: 2300 }("");
     require(success, "Native transfer failed");
   }
 
