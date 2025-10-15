@@ -595,18 +595,18 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                   key={mins}
                   onClick={() => setSelectedPeriod(index)}
                   className={cn(
-                    "ml-2 px-2 py-1 rounded text-xs font-medium transition-colors",
+                    "ml-2 px-2 py-0.5 rounded text-xs font-medium transition-colors",
                     selectedPeriod === index
-                      ? "bg-slate-700 text-white"
-                      : "bg-[#333333] text-[#999999] hover:bg-[#444444]"
+                      ? "bg-red-900/50 text-white border border-red-700"
+                      : "bg-[#222222] text-[#666666] hover:text-[#999999]"
                   )}
                 >
                   {mins}m
                 </button>
               ))}
             </div>
-            <div className="text-sm font-semibold text-white mb-1">Reward Vesting & Exit Window</div>
-            <div className="text-xs text-[#999999]">
+            {/* Inline Vesting / Exit summary (no header) */}
+            <div className="text-xs sm:text-sm font-semibold text-white underline underline-offset-2 decoration-red-600">
               {isNativeQuai && isStakingLoading ? (
                 <span className="inline-flex items-center gap-2">
                   <div className="animate-spin rounded-full h-3 w-3 border-b border-red-600"></div>
@@ -627,10 +627,10 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                   key={period.days}
                   onClick={() => setSelectedPeriod(index)}
                   className={cn(
-                    "ml-2 px-2 py-1 rounded text-xs font-medium transition-colors",
+                    "ml-2 px-2 py-0.5 rounded text-xs font-medium transition-colors",
                     selectedPeriod === index
-                      ? "bg-slate-700 text-white"
-                      : "bg-[#333333] text-[#999999] hover:bg-[#444444]"
+                      ? "bg-red-900/50 text-white border border-red-700"
+                      : "bg-[#222222] text-[#666666] hover:text-[#999999]"
                   )}
                 >
                   {period.days}D
@@ -766,7 +766,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#999999]">Reward Vesting:</span>
-                    <span className="text-yellow-400">
+                    <span className="text-sm sm:text-base text-white font-bold underline underline-offset-2">
                       {REWARD_DELAY_PERIOD >= 3600
                         ? `${Math.floor(REWARD_DELAY_PERIOD / 3600)} hour${Math.floor(REWARD_DELAY_PERIOD / 3600) !== 1 ? 's' : ''} delay before claim`
                         : `${Math.floor(REWARD_DELAY_PERIOD / 60)} minute${Math.floor(REWARD_DELAY_PERIOD / 60) !== 1 ? 's' : ''} delay before claim`
@@ -775,7 +775,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#999999]">Exit Window:</span>
-                    <span className="text-orange-400">
+                    <span className="text-sm sm:text-base text-white font-bold underline underline-offset-2">
                       {EXIT_PERIOD >= 3600
                         ? `${Math.floor(EXIT_PERIOD / 3600)} hour${Math.floor(EXIT_PERIOD / 3600) !== 1 ? 's' : ''} wait to complete withdrawal`
                         : `${Math.floor(EXIT_PERIOD / 60)} minute${Math.floor(EXIT_PERIOD / 60) !== 1 ? 's' : ''} wait to complete withdrawal`
