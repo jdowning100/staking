@@ -2,7 +2,7 @@ import { Contract, JsonRpcProvider, Shard, formatQuai, parseQuai } from 'quais';
 import { useContext, useState, useEffect, useCallback } from 'react';
 import { StateContext } from '@/store';
 // Use the up-to-date ABI from Hardhat artifacts to match the latest contract
-import SmartChefNativeArtifact from '@/artifacts/contracts/SmartChefNative.sol/SmartChefNative.json';
+import SmartChefNativeArtifact from '@/lib/SmartChefNative.json';
 const SmartChefNativeABI = (SmartChefNativeArtifact as any).abi;
 import { RPC_URL, STAKING_CONTRACT_ADDRESS, LOCK_PERIOD, REWARD_DELAY_PERIOD, EXIT_PERIOD, GRACE_PERIOD, SECONDS_PER_BLOCK } from '@/lib/config';
 
@@ -231,7 +231,7 @@ export function useStaking() {
       let pendingRewards = BigInt(0);
       let isLocked = false;
       let timeUntilUnlock = 0;
-      
+
       // Initialize extended user info with defaults
       let extendedInfo = {
         lockEndTime: 0,
@@ -256,7 +256,7 @@ export function useStaking() {
       try {
         // Get comprehensive user info from new contract
         const userInfoResult = await stakingContract.getUserInfo(account.addr);
-        
+
         if (userInfoResult) {
           stakedAmount = userInfoResult.stakedAmount || BigInt(0);
           lockStartTime = userInfoResult.lockStartTime ? Number(userInfoResult.lockStartTime) : 0;
@@ -269,7 +269,7 @@ export function useStaking() {
           extendedInfo.isInExitPeriod = userInfoResult.inExitPeriod || false;
           extendedInfo.canRequestWithdraw = userInfoResult.canRequestWithdraw || false;
           extendedInfo.canExecuteWithdraw = userInfoResult.canExecuteWithdraw || false;
-          
+
           // Only get additional info if user has staked
           if (stakedAmount > BigInt(0)) {
             try {
@@ -277,7 +277,7 @@ export function useStaking() {
               timeUntilUnlock = Number(await stakingContract.timeUntilUnlock(account.addr));
               extendedInfo.timeUntilWithdrawalAvailable = Number(await stakingContract.timeUntilWithdrawalAvailable(account.addr));
               extendedInfo.userStatus = await stakingContract.getUserStatus(account.addr);
-              
+
               // Get reward information (virtual delayed views)
               // Prefer new view methods if available
               const claimableView = await stakingContract.claimableView(account.addr);
@@ -287,24 +287,24 @@ export function useStaking() {
               extendedInfo.totalDelayedRewards = lockedView || BigInt(0);
 
               // Fallbacks to legacy methods if present
-              try { pendingRewards = await stakingContract.pendingReward(account.addr); } catch {}
+              try { pendingRewards = await stakingContract.pendingReward(account.addr); } catch { }
               try {
                 const legacyClaimable = await stakingContract.claimableRewards(account.addr);
                 if (legacyClaimable && extendedInfo.claimableRewards === BigInt(0)) extendedInfo.claimableRewards = legacyClaimable;
-              } catch {}
+              } catch { }
               try {
                 const legacyTotalDelayed = await stakingContract.totalDelayedRewards(account.addr);
                 if (legacyTotalDelayed && extendedInfo.totalDelayedRewards === BigInt(0)) extendedInfo.totalDelayedRewards = legacyTotalDelayed;
-              } catch {}
+              } catch { }
               // For virtual delayed rewards system, create synthetic entries for display
               // The contract uses checkpoint-based virtual calculations instead of storing individual entries
               finalClaimableAmount = extendedInfo.claimableRewards;
               finalTotalDelayedAmount = extendedInfo.totalDelayedRewards;
-              
+
               // Workaround: If virtual system returns 0 but user should have claimable rewards,
               const lockedAmount = finalTotalDelayedAmount - finalClaimableAmount;
               extendedInfo.delayedRewards = [];
-              
+
               // Create synthetic entries for display if there are rewards
               if (finalClaimableAmount > BigInt(0)) {
                 extendedInfo.delayedRewards.push({
@@ -314,7 +314,7 @@ export function useStaking() {
                   timeUntilUnlock: 0
                 });
               }
-              
+
               if (lockedAmount > BigInt(0)) {
                 // Estimate unlock time based on reward delay period
                 const estimatedUnlockTime = Math.floor(Date.now() / 1000) + REWARD_DELAY_PERIOD;
@@ -325,7 +325,7 @@ export function useStaking() {
                   timeUntilUnlock: REWARD_DELAY_PERIOD
                 });
               }
-              
+
               console.log('Created synthetic delayed rewards for display:', extendedInfo.delayedRewards);
             } catch (e) {
               console.warn('Failed to get extended user info:', e);
@@ -664,10 +664,10 @@ export function useStaking() {
       // Get balance before claim
       const balanceBefore = await web3Provider.getBalance(account.addr);
       const claimableBeforeClaim = userInfo.claimableRewards;
-      
+
       // Check contract reward balance
       const contractRewardBalance = await stakingContract.getRewardBalance();
-      
+
       console.log('Claim transaction debug:', {
         userAddress: account.addr,
         balanceBefore: formatQuai(balanceBefore),
@@ -679,12 +679,12 @@ export function useStaking() {
       // Send claim transaction (this will add pending rewards to delayed and claim claimable)
       const tx = await stakingContract.claimRewards({ gasLimit: 500000 });
       setTransactionHash(tx.hash);
-      
+
       console.log('Claim transaction sent:', tx.hash);
 
       // Wait for confirmation
       const receipt = await tx.wait();
-      
+
       console.log('Claim transaction confirmed:', {
         txHash: tx.hash,
         status: receipt.status,
@@ -718,7 +718,7 @@ export function useStaking() {
       // Check balance after claim
       const balanceAfter = await web3Provider.getBalance(account.addr);
       const balanceChange = balanceAfter - balanceBefore;
-      
+
       console.log('Balance change after claim:', {
         balanceBefore: formatQuai(balanceBefore),
         balanceAfter: formatQuai(balanceAfter),
@@ -801,7 +801,7 @@ export function useStaking() {
     // Always load staking info (will load contract info if no wallet, or full info if wallet connected)
     loadStakingInfo();
     // No polling - only refresh after transactions
-    
+
     // Clear user info if no account connected
     if (!account?.addr) {
       setUserInfo(null);
