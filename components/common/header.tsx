@@ -3,7 +3,7 @@ import Logo from '@/components/ui/logo';
 import { requestAccounts, useGetAccounts } from '@/lib/wallet';
 import { cn } from '@/lib/utils';
 import IconContainer from '@/components/ui/iconContainer';
-import { FaDiscord, FaXTwitter } from 'react-icons/fa6';
+import { FaDiscord, FaXTwitter, FaTelegram } from 'react-icons/fa6';
 import { PiGlobe } from 'react-icons/pi';
 import Link from 'next/link';
 import { useContext } from 'react';
@@ -46,6 +46,9 @@ export default function Header() {
             </Link>
             <Link target="_blank" href="https://discord.gg/quai">
               <IconContainer className="p-1.5" icon={<FaDiscord />} />
+            </Link>
+            <Link target="_blank" href="https://t.me/QuaiNetwork">
+              <IconContainer className="p-1.5" icon={<FaTelegram />} />
             </Link>
             <Link target="_blank" href="https://qu.ai">
               <IconContainer className="p-1.5" icon={<PiGlobe />} />

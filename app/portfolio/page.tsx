@@ -409,6 +409,8 @@ export default function Portfolio() {
   });
 
   const totalStaked = allPositions.reduce((sum, pos) => sum + pos.staked, 0);
+  const totalStakedQuai = realQuaiStaked;
+  const totalStakedLP = allPositions.filter(pos => pos.id !== 'native-quai').reduce((sum, pos) => sum + pos.staked, 0);
   const totalEarned = allPositions.reduce((sum, pos) => sum + pos.earned, 0);
   const activePositions = allPositions.filter(pos => pos.staked > 0);
   const totalClaimable = activePositions.reduce((sum, pos) => sum + (pos.claimableRewards ?? 0), 0);
@@ -488,40 +490,42 @@ export default function Portfolio() {
       <div className="w-full max-w-6xl mx-auto space-y-8">
         <h1 className="text-3xl font-bold text-white">Your Portfolio</h1>
 
-        {/* Portfolio Overview */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="modern-card">
-            <CardContent className="p-4 text-center">
-              <div className="text-xl font-bold text-white">{formatNumber(totalStaked)}</div>
-              <div className="text-xs text-[#999999]">Total Staked</div>
-              <div className="text-xs text-[#666666]">QUAI</div>
-            </CardContent>
-          </Card>
-
-          <Card className="modern-card">
-            <CardContent className="p-4 text-center">
-              <div className="text-xl font-bold text-orange-400">{formatBalance(totalEarned)}</div>
-              <div className="text-xs text-[#999999]">Total Earned</div>
-              <div className="text-xs text-[#666666]">QUAI</div>
-            </CardContent>
-          </Card>
-
-          <Card className="modern-card">
-            <CardContent className="p-4 text-center">
-              <div className="text-xl font-bold text-red-400">{weightedApr.toFixed(1)}%</div>
-              <div className="text-xs text-[#999999]">Weighted APR</div>
-              <div className="text-xs text-[#666666]">Average</div>
-            </CardContent>
-          </Card>
-
-          <Card className="modern-card">
-            <CardContent className="p-4 text-center">
-              <div className="text-xl font-bold text-orange-500">{activePositions.length}</div>
-              <div className="text-xs text-[#999999]">Active Positions</div>
-              <div className="text-xs text-[#666666]">Pools</div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Portfolio Overview - single row */}
+        <Card className="modern-card">
+          <CardContent className="p-4">
+            <div className="flex flex-nowrap items-center gap-6 overflow-x-auto">
+              <div className="text-center min-w-[140px]">
+                <div className="text-xl font-bold text-white">{formatNumber(totalStakedQuai)}</div>
+                <div className="text-xs text-[#999999]">Total Staked</div>
+                <div className="text-xs text-[#666666]">QUAI</div>
+              </div>
+              <div className="h-8 w-px bg-[#333333]" />
+              <div className="text-center min-w-[140px]">
+                <div className="text-xl font-bold text-white">{formatNumber(totalStakedLP)}</div>
+                <div className="text-xs text-[#999999]">Total Staked</div>
+                <div className="text-xs text-[#666666]">LP Tokens</div>
+              </div>
+              <div className="h-8 w-px bg-[#333333]" />
+              <div className="text-center min-w-[140px]">
+                <div className="text-xl font-bold text-orange-400">{formatBalance(totalEarned)}</div>
+                <div className="text-xs text-[#999999]">Total Earned</div>
+                <div className="text-xs text-[#666666]">QUAI</div>
+              </div>
+              <div className="h-8 w-px bg-[#333333]" />
+              <div className="text-center min-w-[140px]">
+                <div className="text-xl font-bold text-red-400">{weightedApr.toFixed(1)}%</div>
+                <div className="text-xs text-[#999999]">Weighted APR</div>
+                <div className="text-xs text-[#666666]">Average</div>
+              </div>
+              <div className="h-8 w-px bg-[#333333]" />
+              <div className="text-center min-w-[140px]">
+                <div className="text-xl font-bold text-orange-500">{activePositions.length}</div>
+                <div className="text-xs text-[#999999]">Active Positions</div>
+                <div className="text-xs text-[#666666]">Pools</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Claimable Rewards - Display only */}
         {totalClaimable > 0 && (
@@ -566,11 +570,6 @@ export default function Portfolio() {
                                 `${Math.round(position.apr).toLocaleString()}%` :
                                 `${position.apr.toFixed(1)}%`} APR
                             </span>
-                            {position.lockPeriod && (
-                              <span className="text-xs bg-yellow-900/30 text-yellow-400 px-2 py-1 rounded">
-                                🔒 {position.lockPeriod}D
-                              </span>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -602,8 +601,8 @@ export default function Portfolio() {
                         {/* Withdrawal Actions for Native QUAI */}
                         {position.id === 'native-quai' && position.isReal && position.isInExitPeriod && (
                           position.canExecuteWithdraw ? (
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               className="border-green-500 text-green-400 hover:bg-green-500 hover:text-white"
                               onClick={() => staking.executeWithdraw()}
@@ -612,8 +611,8 @@ export default function Portfolio() {
                               {staking.isTransacting ? 'Processing...' : 'Complete'}
                             </Button>
                           ) : (
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               className="border-orange-500 text-orange-400 hover:bg-orange-500 hover:text-white"
                               onClick={() => staking.cancelWithdraw()}
@@ -623,7 +622,7 @@ export default function Portfolio() {
                             </Button>
                           )
                         )}
-                        
+
                         <Link href={`/stake/${position.id}?mode=manage`}>
                           <Button size="sm" variant="outline" className="border-[#333333] text-[#999999] hover:bg-[#222222]">
                             Manage
@@ -684,14 +683,6 @@ export default function Portfolio() {
                         ))}
                       </div>
                     </div>
-
-                    {/* Bottom Row */}
-                    {position.endDate && (
-                      <div className="text-sm text-[#999999]">
-                        <Clock className="h-3 w-3 inline mr-1" />
-                        Lock expires {formatDate(position.endDate)}
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               );
