@@ -521,7 +521,12 @@ export function useLPStaking(poolId: string) {
       const signer = await web3Provider.getSigner();
       const stakingContract = new Contract(poolConfig.stakingContract, SmartChefLPABI, signer);
 
-      const amountWei = parseUnits(amount, 18);
+      // Determine LP token decimals (prefer cached, fallback to on-chain; default 18)
+      let lpDecimals = 18;
+      try {
+        lpDecimals = (poolInfo?.lpToken?.decimals ?? await (new Contract(poolConfig.lpToken, ERC20ABI, signer)).decimals()) as number;
+      } catch {}
+      const amountWei = parseUnits(amount, lpDecimals);
 
       // Check if we need to approve LP tokens first
       const allowance = await checkAllowance(poolConfig.lpToken, poolConfig.stakingContract);
@@ -536,14 +541,8 @@ export function useLPStaking(poolId: string) {
 
       // Stake LP tokens with duration
       const durationSeconds = durationInput <= 7 * 24 * 60 * 60 ? durationInput : durationInput * 24 * 60 * 60;
-      let tx;
-      try {
-        setTransactionStage('staking');
-        tx = await stakingContract.deposit(amountWei, durationSeconds, { gasLimit: 700000 });
-      } catch (e: any) {
-        setTransactionStage('staking');
-        tx = await stakingContract.deposit(amountWei, { gasLimit: 700000 });
-      }
+      setTransactionStage('staking');
+      const tx = await stakingContract.deposit(amountWei, durationSeconds, { gasLimit: 700000 });
       setTransactionHash(tx.hash);
 
       await tx.wait();
