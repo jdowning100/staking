@@ -265,7 +265,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Token Balances */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
               {/* Token 0 */}
               <div className="border border-[#333333] rounded-lg p-4 bg-[#0a0a0a]">
                 <div className="flex items-center gap-2 mb-2">
@@ -481,15 +481,15 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
             </Button>
 
             {/* Navigation */}
-            <div className="flex justify-between items-center pt-6 mt-6 border-t border-[#333333] gap-4">
-              <Button variant="outline" onClick={() => setCurrentStep(1)} className="px-6 min-w-[120px]">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center pt-6 mt-6 border-t border-[#333333] gap-3 sm:gap-4">
+              <Button variant="outline" onClick={() => setCurrentStep(1)} className="px-6 w-full sm:w-auto min-w-[120px]">
                 Previous
               </Button>
               <div className="flex-1"></div>
               <Button 
                 onClick={() => setCurrentStep(3)}
                 disabled={poolInfo.userLPBalance === BigInt(0)}
-                className="modern-button px-6 min-w-[140px]"
+                className="modern-button px-6 w-full sm:w-auto min-w-[140px]"
               >
                 Next: Stake LP
                 <ArrowRight className="h-4 w-4 ml-2" />

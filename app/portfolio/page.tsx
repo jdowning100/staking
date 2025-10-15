@@ -2,6 +2,7 @@
 import React, { useContext, useRef, useEffect } from 'react';
 import { StateContext, DispatchContext } from '@/store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatUnits } from 'quais';
 import { Button } from '@/components/ui/button';
 import { Coins, TrendingUp, Clock, ExternalLink, ArrowRight, Gift, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -357,15 +358,19 @@ export default function Portfolio() {
     });
   }
 
-  // Add real WQI/QUAI LP position if user has staked amount
-  const realLPStaked = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
-    Number(wqiQuaiLPStaking.poolInfo.stakingInfo.stakedAmountFormatted) : 0;
-  const lpClaimable = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
-    Number(wqiQuaiLPStaking.poolInfo.stakingInfo.claimableRewardsFormatted) : 0;
-  const lpDelayedTotal = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
-    Number(wqiQuaiLPStaking.poolInfo.stakingInfo.totalDelayedRewardsFormatted) : 0;
-  const lpPending = wqiQuaiLPStaking.poolInfo?.stakingInfo ?
-    Number(wqiQuaiLPStaking.poolInfo.stakingInfo.pendingRewardsFormatted) : 0;
+  // Add real WQI/QUAI LP position if user has staked amount (avoid 3-decimal rounding losses)
+  const realLPStaked = wqiQuaiLPStaking.poolInfo?.stakingInfo
+    ? Number(formatUnits(wqiQuaiLPStaking.poolInfo.stakingInfo.stakedAmount || BigInt(0), 18))
+    : 0;
+  const lpClaimable = wqiQuaiLPStaking.poolInfo?.stakingInfo
+    ? Number(formatUnits(wqiQuaiLPStaking.poolInfo.stakingInfo.claimableRewards || BigInt(0), 18))
+    : 0;
+  const lpDelayedTotal = wqiQuaiLPStaking.poolInfo?.stakingInfo
+    ? Number(formatUnits(wqiQuaiLPStaking.poolInfo.stakingInfo.totalDelayedRewards || BigInt(0), 18))
+    : 0;
+  const lpPending = wqiQuaiLPStaking.poolInfo?.stakingInfo
+    ? Number(formatUnits(wqiQuaiLPStaking.poolInfo.stakingInfo.pendingRewards || BigInt(0), 18))
+    : 0;
   // LP earned reflects claimable + delayed; excludes pending
   const realLPEarned = lpClaimable + lpDelayedTotal;
   const realLPApr = wqiQuaiLPStaking.poolInfo?.poolMetrics?.apr || 0;
@@ -490,34 +495,34 @@ export default function Portfolio() {
       <div className="w-full max-w-6xl mx-auto space-y-8">
         <h1 className="text-3xl font-bold text-white">Your Portfolio</h1>
 
-        {/* Portfolio Overview - single row */}
+        {/* Portfolio Overview - single row, ensure no overflow */}
         <Card className="modern-card">
-          <CardContent className="p-4">
-            <div className="flex items-stretch justify-between gap-6 w-full">
-              <div className="text-center flex-1 min-w-[140px]">
-                <div className="text-xl font-bold text-white">{formatNumber(totalStakedQuai)}</div>
-                <div className="text-xs text-[#999999]">Total Staked</div>
-                <div className="text-xs text-[#666666]">QUAI</div>
+          <CardContent className="p-4 overflow-hidden">
+            <div className="flex flex-nowrap items-stretch justify-between gap-1 sm:gap-3 w-full">
+              <div className="text-center flex-1 min-w-0 px-1">
+                <div className="text-[11px] sm:text-sm md:text-xl font-bold text-white truncate">{formatNumber(totalStakedQuai)}</div>
+                <div className="text-[10px] sm:text-xs text-[#999999] truncate">Total Staked</div>
+                <div className="text-[10px] sm:text-xs text-[#666666] truncate">QUAI</div>
               </div>
-              <div className="text-center flex-1 min-w-[140px]">
-                <div className="text-xl font-bold text-white">{formatNumber(totalStakedLP)}</div>
-                <div className="text-xs text-[#999999]">Total Staked</div>
-                <div className="text-xs text-[#666666]">LP Tokens</div>
+              <div className="text-center flex-1 min-w-0 px-1">
+                <div className="text-[11px] sm:text-sm md:text-xl font-bold text-white truncate">{formatNumber(totalStakedLP)}</div>
+                <div className="text-[10px] sm:text-xs text-[#999999] truncate">Total Staked</div>
+                <div className="text-[10px] sm:text-xs text-[#666666] truncate">LP Tokens</div>
               </div>
-              <div className="text-center flex-1 min-w-[140px]">
-                <div className="text-xl font-bold text-orange-400">{Number(formatBalance(totalEarned)).toLocaleString('en-US', { maximumFractionDigits: 3 })}</div>
-                <div className="text-xs text-[#999999]">Total Earned</div>
-                <div className="text-xs text-[#666666]">QUAI</div>
+              <div className="text-center flex-1 min-w-0 px-1">
+                <div className="text-[11px] sm:text-sm md:text-xl font-bold text-orange-400 truncate">{formatNumber(Number(formatBalance(totalEarned)))}</div>
+                <div className="text-[10px] sm:text-xs text-[#999999] truncate">Total Earned</div>
+                <div className="text-[10px] sm:text-xs text-[#666666] truncate">QUAI</div>
               </div>
-              <div className="text-center flex-1 min-w-[140px]">
-                <div className="text-xl font-bold text-red-400">{weightedApr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%</div>
-                <div className="text-xs text-[#999999]">Weighted APR</div>
-                <div className="text-xs text-[#666666]">Average</div>
+              <div className="text-center flex-1 min-w-0 px-1">
+                <div className="text-[11px] sm:text-sm md:text-xl font-bold text-red-400 truncate">{weightedApr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%</div>
+                <div className="text-[10px] sm:text-xs text-[#999999] truncate">Weighted APR</div>
+                <div className="text-[10px] sm:text-xs text-[#666666] truncate">Average</div>
               </div>
-              <div className="text-center flex-1 min-w-[140px]">
-                <div className="text-xl font-bold text-orange-500">{activePositions.length}</div>
-                <div className="text-xs text-[#999999]">Active Positions</div>
-                <div className="text-xs text-[#666666]">Pools</div>
+              <div className="text-center flex-1 min-w-0 px-1">
+                <div className="text-[11px] sm:text-sm md:text-xl font-bold text-orange-500 truncate">{activePositions.length}</div>
+                <div className="text-[10px] sm:text-xs text-[#999999] truncate">Active Positions</div>
+                <div className="text-[10px] sm:text-xs text-[#666666] truncate">Pools</div>
               </div>
             </div>
           </CardContent>

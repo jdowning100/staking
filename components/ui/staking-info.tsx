@@ -626,14 +626,25 @@ export function StakingInfo({
 
                 {!userInfo?.isInExitPeriod && (
                   <div className="space-y-3">
-                    <Input
-                      type="number"
-                      placeholder={`Amount to withdraw (${TOKEN_SYMBOL})`}
-                      value={withdrawAmount}
-                      onChange={(e) => setWithdrawAmount(e.target.value)}
-                      className="bg-[#222222] border-[#333333] text-white"
-                      disabled={isTransacting || !userInfo?.canRequestWithdraw}
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder={`Amount to withdraw (${TOKEN_SYMBOL})`}
+                        value={withdrawAmount}
+                        onChange={(e) => setWithdrawAmount(e.target.value)}
+                        className="bg-[#222222] border-[#333333] text-white flex-1"
+                        disabled={isTransacting || !userInfo?.canRequestWithdraw}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-auto border-[#333333] text-[#999999] hover:bg-[#222222]"
+                        onClick={() => setWithdrawAmount(userInfo?.stakedAmountFormatted || '0')}
+                        disabled={isTransacting || !userInfo?.canRequestWithdraw}
+                      >
+                        Max
+                      </Button>
+                    </div>
                     <Button
                       onClick={handleRequestWithdraw}
                       disabled={

@@ -34,13 +34,13 @@ export default function Header() {
   return (
     <div className={cn('fixed top-0 left-0 w-full z-50 glass')}>
       <div
-        className={cn('lg:px-8 md:pr-8 px-4 flex flex-col', {
+        className={cn('lg:px-8 md:pr-8 px-3 sm:px-4 flex flex-col', {
           'w-full ': true,
         })}
       >
-        <div className="flex py-2 justify-between">
-          <Logo />
-          <div className={cn('flex gap-2 items-center ml-auto')}>
+        <div className="flex py-2 justify-between items-center gap-2">
+          <div className="min-w-[120px]"><Logo /></div>
+          <div className={cn('flex gap-1 sm:gap-2 items-center ml-auto')}>
             <Link target="_blank" href="https://x.com/QuaiNetwork">
               <IconContainer className="p-1.5" icon={<FaXTwitter />} />
             </Link>
@@ -62,8 +62,8 @@ export default function Header() {
             ) : (
               <Button variant="downloadPelagus" size="sm" onClick={connectHandler} disabled={!!account}>
                 {account ? (
-                  <div className="flex gap-[10px]">
-                    <p className="text-white text-md font-semibold">Cyprus-1</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white text-sm sm:text-md font-semibold hidden sm:block">Cyprus-1</p>
                     <p className="text-gray-300 font-light">{shortenAddress(account.addr)}</p>
                   </div>
                 ) : (
@@ -71,8 +71,8 @@ export default function Header() {
                     <Image
                       src="/images/pelagus-logo.png"
                       alt="Pelagus"
-                      width={24}
-                      height={24}
+                      width={20}
+                      height={20}
                       className="rounded-sm"
                     />
                     Connect
@@ -84,13 +84,13 @@ export default function Header() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex gap-6 pb-2">
+        <div className="flex flex-wrap gap-2 sm:gap-3 md:gap-4 pb-2">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                'text-sm font-medium transition-colors hover:text-red-9 pb-2 border-b-2 border-transparent',
+                'text-xs sm:text-sm font-medium transition-colors hover:text-red-9 pb-2 border-b-2 border-transparent',
                 {
                   'text-red-9 border-red-9': pathname === item.href,
                   'text-[#999999]': pathname !== item.href,

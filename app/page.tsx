@@ -881,8 +881,8 @@ export default function Home() {
               </p>
             </div>
 
-            {/* LP Pools Grid - Single Row */}
-            <div className="grid grid-cols-3 gap-6">
+            {/* LP Pools Grid - One per row on mobile */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {lpStakingPools.map((pool) => (
                 <PoolCard
                   key={pool.id}

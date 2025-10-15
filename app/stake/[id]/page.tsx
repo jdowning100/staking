@@ -171,11 +171,11 @@ export default function StakePage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center pt-32 pb-8 px-4">
+    <main className="flex min-h-screen flex-col items-center pt-24 md:pt-32 pb-8 px-3 sm:px-4">
       <div className="w-full max-w-2xl mx-auto">
 
         {/* Back Button */}
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <Link href="/" className="flex items-center gap-2 text-[#999999] hover:text-white transition-colors">
             <ArrowLeft className="h-4 w-4" />
             Back to Pools
@@ -185,18 +185,18 @@ export default function StakePage() {
         {/* Pool Header */}
         <Card className="bg-[#1a1a1a] border border-[#333333] mb-6">
           <CardHeader>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
               <TokenLogos tokens={pool.tokens} size={48} />
-              <div>
-                <CardTitle className="text-2xl text-white">{pool.name}</CardTitle>
-                <p className="text-[#999999]">{pool.description}</p>
+              <div className="text-center sm:text-left">
+                <CardTitle className="text-xl sm:text-2xl text-white">{pool.name}</CardTitle>
+                <p className="text-[#999999] text-sm sm:text-base">{pool.description}</p>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               <div className="text-center">
-                <div className="text-lg font-bold text-white">
+                <div className="text-base sm:text-lg font-bold text-white">
                   {(isRealStaking && staking.isLoading) || (isRealLPPool && lpStaking.isLoading) ? (
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600" />
@@ -249,7 +249,7 @@ export default function StakePage() {
                 )}
               </div>
               <div className="text-center">
-                <div className="text-lg font-bold text-white">
+                <div className="text-base sm:text-lg font-bold text-white">
                   {(isRealStaking && staking.isLoading) || (isRealLPPool && lpStaking.isLoading) ? (
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600" />
@@ -266,7 +266,7 @@ export default function StakePage() {
                 <div className="text-xs text-[#666666]">Active Staked</div>
               </div>
               <div className="text-center">
-                <div className="text-lg font-bold text-white">
+                <div className="text-base sm:text-lg font-bold text-white">
                   {(isRealStaking && staking.isLoading) || (isRealLPPool && lpStaking.isLoading) ? (
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600" />
