@@ -766,7 +766,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#999999]">Reward Vesting:</span>
-                    <span className="text-sm sm:text-base text-white font-bold underline underline-offset-2">
+                    <span className="text-sm sm:text-base text-white font-bold underline underline-offset-2 text-right">
                       {REWARD_DELAY_PERIOD >= 3600
                         ? `${Math.floor(REWARD_DELAY_PERIOD / 3600)} hour${Math.floor(REWARD_DELAY_PERIOD / 3600) !== 1 ? 's' : ''} delay before claim`
                         : `${Math.floor(REWARD_DELAY_PERIOD / 60)} minute${Math.floor(REWARD_DELAY_PERIOD / 60) !== 1 ? 's' : ''} delay before claim`
@@ -775,7 +775,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#999999]">Exit Window:</span>
-                    <span className="text-sm sm:text-base text-white font-bold underline underline-offset-2">
+                    <span className="text-sm sm:text-base text-white font-bold underline underline-offset-2 text-right">
                       {EXIT_PERIOD >= 3600
                         ? `${Math.floor(EXIT_PERIOD / 3600)} hour${Math.floor(EXIT_PERIOD / 3600) !== 1 ? 's' : ''} wait to complete withdrawal`
                         : `${Math.floor(EXIT_PERIOD / 60)} minute${Math.floor(EXIT_PERIOD / 60) !== 1 ? 's' : ''} wait to complete withdrawal`
