@@ -493,32 +493,28 @@ export default function Portfolio() {
         {/* Portfolio Overview - single row */}
         <Card className="modern-card">
           <CardContent className="p-4">
-            <div className="flex flex-nowrap items-center gap-6 overflow-x-auto">
-              <div className="text-center min-w-[140px]">
+            <div className="flex items-stretch justify-between gap-6 w-full">
+              <div className="text-center flex-1 min-w-[140px]">
                 <div className="text-xl font-bold text-white">{formatNumber(totalStakedQuai)}</div>
                 <div className="text-xs text-[#999999]">Total Staked</div>
                 <div className="text-xs text-[#666666]">QUAI</div>
               </div>
-              <div className="h-8 w-px bg-[#333333]" />
-              <div className="text-center min-w-[140px]">
+              <div className="text-center flex-1 min-w-[140px]">
                 <div className="text-xl font-bold text-white">{formatNumber(totalStakedLP)}</div>
                 <div className="text-xs text-[#999999]">Total Staked</div>
                 <div className="text-xs text-[#666666]">LP Tokens</div>
               </div>
-              <div className="h-8 w-px bg-[#333333]" />
-              <div className="text-center min-w-[140px]">
-                <div className="text-xl font-bold text-orange-400">{formatBalance(totalEarned)}</div>
+              <div className="text-center flex-1 min-w-[140px]">
+                <div className="text-xl font-bold text-orange-400">{Number(formatBalance(totalEarned)).toLocaleString('en-US', { maximumFractionDigits: 3 })}</div>
                 <div className="text-xs text-[#999999]">Total Earned</div>
                 <div className="text-xs text-[#666666]">QUAI</div>
               </div>
-              <div className="h-8 w-px bg-[#333333]" />
-              <div className="text-center min-w-[140px]">
-                <div className="text-xl font-bold text-red-400">{weightedApr.toFixed(1)}%</div>
+              <div className="text-center flex-1 min-w-[140px]">
+                <div className="text-xl font-bold text-red-400">{weightedApr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%</div>
                 <div className="text-xs text-[#999999]">Weighted APR</div>
                 <div className="text-xs text-[#666666]">Average</div>
               </div>
-              <div className="h-8 w-px bg-[#333333]" />
-              <div className="text-center min-w-[140px]">
+              <div className="text-center flex-1 min-w-[140px]">
                 <div className="text-xl font-bold text-orange-500">{activePositions.length}</div>
                 <div className="text-xs text-[#999999]">Active Positions</div>
                 <div className="text-xs text-[#666666]">Pools</div>
@@ -566,9 +562,9 @@ export default function Portfolio() {
                           <h3 className="text-lg font-semibold text-white">{position.name}</h3>
                           <div className="flex items-center gap-2">
                             <span className="text-orange-400 text-sm font-medium">
-                              {position.apr >= 1000 ?
-                                `${Math.round(position.apr).toLocaleString()}%` :
-                                `${position.apr.toFixed(1)}%`} APR
+                              {position.apr >= 1000
+                                ? `${Math.round(position.apr).toLocaleString('en-US')}%`
+                                : `${position.apr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%`} APR
                             </span>
                           </div>
                         </div>
@@ -650,7 +646,7 @@ export default function Portfolio() {
                           Total Earned {position.id === 'wqi-quai' ? 'QUAI' : position.tokens[0]}
                         </div>
                         <div className="text-xs text-white mt-1">
-                          ~${(position.earned * 0.05).toFixed(2)}
+                          ~${(position.earned * 0.05).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                       </div>
 
@@ -660,7 +656,7 @@ export default function Portfolio() {
                           Claimable Now
                         </div>
                         <div className="text-xs text-white mt-1">
-                          ~${(position.claimableRewards * 0.05).toFixed(2)}
+                          ~${(position.claimableRewards * 0.05).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                       </div>
 
