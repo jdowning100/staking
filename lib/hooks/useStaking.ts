@@ -235,6 +235,7 @@ export function useStaking() {
       // Initialize extended user info with defaults
       let extendedInfo = {
         lockEndTime: 0,
+        lockDurationSeconds: 0,
         isInExitPeriod: false,
         canRequestWithdraw: false,
         canExecuteWithdraw: false,
@@ -745,11 +746,15 @@ export function useStaking() {
       const provider = new JsonRpcProvider(RPC_URL);
       const stakingContract = new Contract(STAKING_CONTRACT_ADDRESS, SmartChefNativeABI, provider);
 
-      const [pendingRewards, claimable, locked] = await Promise.all([
-        stakingContract.pendingReward(account.addr),
+      const [pendingRaw, claimableRaw, lockedRaw] = await Promise.all([
+        stakingContract.pendingReward(account.addr).catch(() => BigInt(0)),
         stakingContract.claimableView(account.addr).catch(() => BigInt(0)),
         stakingContract.lockedView(account.addr).catch(() => BigInt(0)),
       ]);
+
+      const pendingRewards: bigint = BigInt(pendingRaw as any);
+      const claimable: bigint = BigInt(claimableRaw as any);
+      const locked: bigint = BigInt(lockedRaw as any);
 
       // Rebuild synthetic delayed entries for display
       const syntheticDelayed: DelayedReward[] = [];
@@ -761,7 +766,7 @@ export function useStaking() {
           timeUntilUnlock: 0,
         });
       }
-      const lockedPortion = locked > claimable ? (locked - claimable) : BigInt(0);
+      const lockedPortion: bigint = locked > claimable ? (locked - claimable) : BigInt(0);
       if (lockedPortion > BigInt(0)) {
         syntheticDelayed.push({
           amount: lockedPortion,

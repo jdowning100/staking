@@ -51,6 +51,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
     poolInfo,
     isLoading,
     isTransacting,
+    transactionStage,
     error,
     approveToken,
     checkAllowance,
@@ -525,6 +526,7 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
               canExecuteWithdraw: poolInfo.stakingInfo.canExecuteWithdraw,
               withdrawRequestTime: 0,
               withdrawalAmount: BigInt(0),
+              withdrawalAmountFormatted: '0',
               withdrawalAvailableTime: 0,
               timeUntilUnlock: poolInfo.stakingInfo.timeUntilUnlock,
               timeUntilWithdrawalAvailable: poolInfo.stakingInfo.timeUntilWithdrawalAvailable,
@@ -553,12 +555,12 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
             isTransacting={isTransacting}
             transactionStage={transactionStage}
             error={error}
-            transactionHash={undefined}
-            onDeposit={(amount: string, durationSeconds: number) => stakeLPTokens(amount, durationSeconds)}
-            onRequestWithdraw={requestLPWithdraw}
-            onExecuteWithdraw={executeLPWithdraw}
-            onCancelWithdraw={cancelLPWithdraw}
-            onClaimRewards={claimLPRewards}
+            transactionHash={null}
+            onDeposit={async (amount: string, durationSeconds: number) => { await stakeLPTokens(amount, durationSeconds); }}
+            onRequestWithdraw={async (amount: string) => { await requestLPWithdraw(amount); }}
+            onExecuteWithdraw={async () => { await executeLPWithdraw(); }}
+            onCancelWithdraw={async () => { await cancelLPWithdraw(); }}
+            onClaimRewards={async () => { await claimLPRewards(); }}
             onRefresh={refreshData}
             stakedSymbol="LP"
             rewardSymbol="QUAI"

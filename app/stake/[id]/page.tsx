@@ -433,6 +433,7 @@ export default function StakePage() {
               canExecuteWithdraw: lpStaking.poolInfo.stakingInfo.canExecuteWithdraw,
               withdrawRequestTime: 0,
               withdrawalAmount: BigInt(0),
+              withdrawalAmountFormatted: '0',
               withdrawalAvailableTime: 0,
               timeUntilUnlock: lpStaking.poolInfo.stakingInfo.timeUntilUnlock,
               timeUntilWithdrawalAvailable: lpStaking.poolInfo.stakingInfo.timeUntilWithdrawalAvailable,
@@ -462,11 +463,11 @@ export default function StakePage() {
             transactionStage={lpStaking.transactionStage}
             error={lpStaking.error}
             transactionHash={lpStaking.transactionHash}
-            onDeposit={(amount: string, durationSeconds: number) => lpStaking.stakeLPTokens(amount, durationSeconds)}
-            onRequestWithdraw={lpStaking.requestLPWithdraw}
-            onExecuteWithdraw={lpStaking.executeLPWithdraw}
-            onCancelWithdraw={lpStaking.cancelLPWithdraw}
-            onClaimRewards={lpStaking.claimLPRewards}
+            onDeposit={async (amount: string, durationSeconds: number) => { await lpStaking.stakeLPTokens(amount, durationSeconds); }}
+            onRequestWithdraw={async (amount: string) => { await lpStaking.requestLPWithdraw(amount); }}
+            onExecuteWithdraw={async () => { await lpStaking.executeLPWithdraw(); }}
+            onCancelWithdraw={async () => { await lpStaking.cancelLPWithdraw(); }}
+            onClaimRewards={async () => { await lpStaking.claimLPRewards(); }}
             onRefresh={lpStaking.refreshData}
             stakedSymbol="LP"
             rewardSymbol="QUAI"
