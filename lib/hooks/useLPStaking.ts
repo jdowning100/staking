@@ -2,7 +2,8 @@ import { Contract, JsonRpcProvider, Shard, formatUnits, parseUnits } from 'quais
 import { useContext, useState, useEffect, useCallback } from 'react';
 import { StateContext } from '@/store';
 import ERC20ABI from '@/lib/abis/ERC20.json';
-import SmartChefLPABI from '@/lib/SmartChefLP.json';
+import SmartChefLPArtifact from '@/lib/SmartChefLP.json';
+const SmartChefLPABI: any = (SmartChefLPArtifact as any).abi || SmartChefLPArtifact;
 import { RPC_URL, TOKEN_ADDRESSES, LP_POOLS, REWARD_DELAY_PERIOD } from '@/lib/config';
 
 // Helper function to format numbers with up to 3 decimals but remove trailing zeros
