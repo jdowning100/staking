@@ -17,7 +17,7 @@ const CHAIN_ID = process.env.CHAIN_ID || '9';
 const LP_POOLS = {
   'WQI-QUAI': {
     lpTokenAddress: '0x001f91029Df78aF6D13cbFfa8724F1b2718da3F1',
-    rewardPerBlock: quais.parseQuai('0.001'), // 0.001 QUAI per block - matches frontend config
+    rewardPerBlock: quais.parseQuai('0.01'), // 0.01 QUAI per block - matches frontend config
     poolLimitPerUser: quais.parseQuai('1000'), // 1000 LP tokens max per user - matches frontend config
     // Periods: 10 minutes reward delay and exit window
     rewardDelayPeriod: 600, // 10 minutes

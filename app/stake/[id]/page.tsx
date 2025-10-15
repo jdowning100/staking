@@ -212,8 +212,8 @@ export default function StakePage() {
                   ) : isRealLPPool && lpStaking.poolInfo?.poolMetrics ? (
                     <span>
                       {selectedStakePeriod === 0
-                        ? (lpStaking.poolInfo.poolMetrics.apy30 ?? lpStaking.poolInfo.poolMetrics.apr).toFixed(1)
-                        : (lpStaking.poolInfo.poolMetrics.apy90 ?? lpStaking.poolInfo.poolMetrics.apr).toFixed(1)
+                        ? (lpStaking.poolInfo.poolMetrics.apy30 ?? lpStaking.poolInfo.poolMetrics.apr).toLocaleString('en-US', { maximumFractionDigits: 1 })
+                        : (lpStaking.poolInfo.poolMetrics.apy90 ?? lpStaking.poolInfo.poolMetrics.apr).toLocaleString('en-US', { maximumFractionDigits: 1 })
                       }%
                     </span>
                   ) : (
@@ -293,8 +293,8 @@ export default function StakePage() {
               </div>
             </div>
 
-            {/* Show Details Button */}
-            {isRealStaking && (
+            {/* Show Details Button (native + LP) */}
+            {(isRealStaking || isRealLPPool) && (
               <div className="flex justify-center mt-4">
                 <Button
                   variant="outline"
@@ -370,6 +370,39 @@ export default function StakePage() {
               </div>
             </CardContent>
           )}
+          {showDetails && isRealLPPool && lpStaking.poolInfo?.poolMetrics && (
+            <CardContent className="pt-0 border-t border-[#333333]">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <p className="text-[#999999]">Reward Per Block</p>
+                    <p className="font-medium text-white">
+                      {lpStaking.poolInfo.poolMetrics.rewardPerBlockFormatted} QUAI
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[#999999]">Total Staked</p>
+                    <p className="font-medium text-white">
+                      {lpStaking.poolInfo.poolMetrics.totalStakedFormatted} LP
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <p className="text-[#999999]">Reward Balance</p>
+                    <p className="font-medium text-white">
+                      {lpStaking.poolInfo.poolMetrics.rewardBalanceFormatted} QUAI
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[#999999]">Start Block</p>
+                    <p className="font-medium text-white">{lpStaking.poolInfo.poolMetrics.startBlock}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {/* (Stake Period selector removed from manage page) */}
@@ -395,25 +428,14 @@ export default function StakePage() {
             availableBalanceLabel="QUAI Balance"
           />
         ) : isRealLPPool ? (
-          (mode === 'stake' || !(lpStaking.poolInfo?.stakingInfo && lpStaking.poolInfo.stakingInfo.stakedAmount > BigInt(0))) ? (
-            <LPStakingFlow
-              poolId={poolId}
-              initialMode={'stake'}
-              onComplete={() => {
-                // After completing staking flow, switch to manage view
-                const url = new URL(window.location.href);
-                url.searchParams.set('mode', 'manage');
-                window.location.href = url.toString();
-              }}
-            />
-          ) : (
-          <>
-            <div className="flex justify-end mb-3">
-              <Link href={`/stake/${poolId}?mode=stake`} className="text-sm text-red-400 hover:text-red-300 underline">
-                Need WQI or LP? Open LP Builder
-              </Link>
-            </div>
-            <StakingInfo
+          mode === 'manage' ? (
+            <>
+              <div className="flex justify-end mb-3">
+                <Link href={`/stake/${poolId}?mode=stake`} className="text-sm text-red-400 hover:text-red-300 underline">
+                  Need WQI or LP? Open LP Builder
+                </Link>
+              </div>
+              <StakingInfo
             userInfo={lpStaking.poolInfo?.stakingInfo ? {
               stakedAmount: lpStaking.poolInfo.stakingInfo.stakedAmount,
               stakedAmountFormatted: lpStaking.poolInfo.stakingInfo.stakedAmountFormatted,
@@ -431,14 +453,38 @@ export default function StakePage() {
               isInExitPeriod: lpStaking.poolInfo.stakingInfo.isInExitPeriod,
               canRequestWithdraw: lpStaking.poolInfo.stakingInfo.canRequestWithdraw,
               canExecuteWithdraw: lpStaking.poolInfo.stakingInfo.canExecuteWithdraw,
-              withdrawRequestTime: 0,
-              withdrawalAmount: BigInt(0),
-              withdrawalAmountFormatted: '0',
-              withdrawalAvailableTime: 0,
+              withdrawRequestTime: lpStaking.poolInfo.stakingInfo.withdrawRequestTime,
+              withdrawalAmount: lpStaking.poolInfo.stakingInfo.withdrawalAmount,
+              withdrawalAmountFormatted: lpStaking.poolInfo.stakingInfo.withdrawalAmountFormatted,
+              withdrawalAvailableTime: lpStaking.poolInfo.stakingInfo.withdrawalAvailableTime,
               timeUntilUnlock: lpStaking.poolInfo.stakingInfo.timeUntilUnlock,
               timeUntilWithdrawalAvailable: lpStaking.poolInfo.stakingInfo.timeUntilWithdrawalAvailable,
               userStatus: lpStaking.poolInfo.stakingInfo.userStatus || ''
-            } : null}
+            } : {
+              stakedAmount: BigInt(0),
+              stakedAmountFormatted: '0',
+              pendingRewards: BigInt(0),
+              pendingRewardsFormatted: '0',
+              claimableRewards: BigInt(0),
+              claimableRewardsFormatted: '0',
+              totalDelayedRewards: BigInt(0),
+              totalDelayedRewardsFormatted: '0',
+              delayedRewards: [],
+              lockStartTime: 0,
+              lockDurationSeconds: 0,
+              lockEndTime: 0,
+              isLocked: false,
+              isInExitPeriod: false,
+              canRequestWithdraw: true,
+              canExecuteWithdraw: false,
+                withdrawRequestTime: 0,
+                withdrawalAmount: BigInt(0),
+                withdrawalAmountFormatted: '0',
+                withdrawalAvailableTime: 0,
+              timeUntilUnlock: 0,
+              timeUntilWithdrawalAvailable: 0,
+              userStatus: ''
+            }}
             contractInfo={lpStaking.poolInfo?.poolMetrics ? {
               totalStaked: lpStaking.poolInfo.poolMetrics.totalStaked,
               totalStakedFormatted: lpStaking.poolInfo.poolMetrics.totalStakedFormatted,
@@ -474,7 +520,18 @@ export default function StakePage() {
             availableBalanceFormatted={lpStaking.poolInfo?.userLPBalanceFormatted}
             availableBalanceLabel="LP Balance"
           />
-          </>
+            </>
+          ) : (
+            <LPStakingFlow
+              poolId={poolId}
+              initialMode={'stake'}
+              onComplete={() => {
+                // After building/staking, switch to manage view
+                const url = new URL(window.location.href);
+                url.searchParams.set('mode', 'manage');
+                window.location.href = url.toString();
+              }}
+            />
           )
         ) : (
           /* Placeholder for inactive pools */

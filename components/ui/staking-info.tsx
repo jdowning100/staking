@@ -9,7 +9,7 @@ import { Loader2, ChevronDown, ChevronUp, ExternalLink, Lock, Clock, Timer, Aler
 import { cn } from '@/lib/utils';
 import { formatQuai } from '@/lib/hooks/useStaking';
 import { formatBalance } from '@/lib/utils/formatBalance';
-import { REWARD_DELAY_PERIOD, EXIT_PERIOD } from '@/lib/config';
+import { REWARD_DELAY_PERIOD, EXIT_PERIOD, SECONDS_PER_BLOCK } from '@/lib/config';
 
 interface StakingInfoProps {
   userInfo: UserStakingInfo | null;
@@ -356,11 +356,11 @@ export function StakingInfo({
                   {userInfo.userStatus}
                 </span>
               </div>
-              {userInfo.lockEndTime && userInfo.lockEndTime > Math.floor(Date.now() / 1000) && (
+              {(userInfo.lockEndTime ?? 0) > Math.floor(Date.now() / 1000) && (
                 <div className="flex justify-between">
                   <span className="text-[#999999]">Unlock Date</span>
                   <span className="font-medium text-white text-sm">
-                    {new Date(userInfo.lockEndTime * 1000).toLocaleDateString('en-US', {
+                    {new Date((userInfo.lockEndTime as number) * 1000).toLocaleString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
@@ -530,32 +530,25 @@ export function StakingInfo({
                           <span className="text-[#999999]">Estimated APR After Deposit:</span>
                           <span className="text-blue-400">
                             {(() => {
-                              // Calculate projected APR after deposit is added to pool
+                              // Prefer on-chain reward rate to estimate APR
                               const currentTotalStaked = parseFloat((contractInfo.activeStakedFormatted ?? contractInfo.totalStakedFormatted) || '0');
                               const newDeposit = parseFloat(depositAmount);
                               const projectedTotalStaked = currentTotalStaked + newDeposit;
-                              
-                              // Get current reward rate (rewardPerBlock or emissionRate)
-                              const currentRewardBalance = parseFloat(contractInfo.rewardBalanceFormatted || '0');
-                              
-                              if (projectedTotalStaked === 0 || currentRewardBalance === 0) {
-                                return 'TBD';
+
+                              const rewardPerBlock = parseFloat(contractInfo.rewardPerBlockFormatted || '0');
+                              const blocksPerYear = Math.floor((365 * 24 * 60 * 60) / (SECONDS_PER_BLOCK || 5));
+                              const annualRewardsFromBlocks = rewardPerBlock * blocksPerYear; // in reward token units
+
+                              let projectedApr: number;
+                              if (projectedTotalStaked > 0 && annualRewardsFromBlocks > 0) {
+                                projectedApr = (annualRewardsFromBlocks / projectedTotalStaked) * 100;
+                              } else {
+                                // Fallback to existing APY when rate/TVL unavailable
+                                projectedApr = stakePeriod === 600
+                                  ? (contractInfo.apy30 ?? contractInfo.apy ?? 0)
+                                  : (contractInfo.apy90 ?? contractInfo.apy ?? 0);
                               }
-                              
-                              // Simple APR calculation: (annual rewards / total staked) * 100
-                              // Assuming current reward distribution continues
-                              const currentApy = stakePeriod === 600 
-                                ? (contractInfo.apy30 ?? contractInfo.apy)
-                                : (contractInfo.apy90 ?? contractInfo.apy);
-                              
-                              // Estimate annual rewards from current APY and current pool size
-                              const estimatedAnnualRewards = (currentTotalStaked * currentApy / 100);
-                              
-                              // Calculate projected APR with larger pool
-                              const projectedApr = projectedTotalStaked > 0 
-                                ? (estimatedAnnualRewards / projectedTotalStaked) * 100 
-                                : currentApy;
-                              
+
                               return `${projectedApr.toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
                             })()}
                           </span>
@@ -566,25 +559,28 @@ export function StakingInfo({
                           <span className="text-[#999999]">Your Period Earnings:</span>
                           <span className="text-green-400">
                             {(() => {
-                              // Use the projected APR for earnings calculation
+                              // Estimate period earnings using rewardPerBlock preference
                               const currentTotalStaked = parseFloat((contractInfo.activeStakedFormatted ?? contractInfo.totalStakedFormatted) || '0');
                               const newDeposit = parseFloat(depositAmount);
                               const projectedTotalStaked = currentTotalStaked + newDeposit;
-                              
-                              const currentApy = stakePeriod === 600 
-                                ? (contractInfo.apy30 ?? contractInfo.apy)
-                                : (contractInfo.apy90 ?? contractInfo.apy);
-                              
-                              let projectedApr = currentApy;
-                              if (projectedTotalStaked > 0 && currentTotalStaked > 0) {
-                                const estimatedAnnualRewards = (currentTotalStaked * currentApy / 100);
-                                projectedApr = (estimatedAnnualRewards / projectedTotalStaked) * 100;
+
+                              const rewardPerBlock = parseFloat(contractInfo.rewardPerBlockFormatted || '0');
+                              const blocksPerYear = Math.floor((365 * 24 * 60 * 60) / (SECONDS_PER_BLOCK || 5));
+                              const annualRewardsFromBlocks = rewardPerBlock * blocksPerYear;
+
+                              let projectedApr: number;
+                              if (projectedTotalStaked > 0 && annualRewardsFromBlocks > 0) {
+                                projectedApr = (annualRewardsFromBlocks / projectedTotalStaked) * 100;
+                              } else {
+                                projectedApr = stakePeriod === 600
+                                  ? (contractInfo.apy30 ?? contractInfo.apy ?? 0)
+                                  : (contractInfo.apy90 ?? contractInfo.apy ?? 0);
                               }
-                              
+
                               const periodInSeconds = stakePeriod;
                               const annualReturn = (newDeposit * projectedApr / 100);
                               const periodReturn = (annualReturn * periodInSeconds) / (365 * 24 * 60 * 60);
-                              return `${periodReturn.toFixed(4)} QUAI`;
+                              return `${periodReturn.toFixed(4)} ${REWARD_SYMBOL}`;
                             })()}
                           </span>
                         </div>

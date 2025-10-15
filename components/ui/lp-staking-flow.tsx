@@ -183,8 +183,9 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
       // Refresh data after adding liquidity
       await refreshData();
       
-      // Move to next step
+      // Move to manage step and notify parent to switch to manage mode
       setCurrentStep(3);
+      onComplete?.();
     } catch (err) {
       console.error('Add liquidity failed:', err);
     }
@@ -524,10 +525,10 @@ export function LPStakingFlow({ poolId, onComplete, initialMode = 'stake' }: LPS
               isInExitPeriod: poolInfo.stakingInfo.isInExitPeriod,
               canRequestWithdraw: poolInfo.stakingInfo.canRequestWithdraw,
               canExecuteWithdraw: poolInfo.stakingInfo.canExecuteWithdraw,
-              withdrawRequestTime: 0,
-              withdrawalAmount: BigInt(0),
-              withdrawalAmountFormatted: '0',
-              withdrawalAvailableTime: 0,
+              withdrawRequestTime: poolInfo.stakingInfo.withdrawRequestTime,
+              withdrawalAmount: poolInfo.stakingInfo.withdrawalAmount,
+              withdrawalAmountFormatted: poolInfo.stakingInfo.withdrawalAmountFormatted,
+              withdrawalAvailableTime: poolInfo.stakingInfo.withdrawalAvailableTime,
               timeUntilUnlock: poolInfo.stakingInfo.timeUntilUnlock,
               timeUntilWithdrawalAvailable: poolInfo.stakingInfo.timeUntilWithdrawalAvailable,
               userStatus: poolInfo.stakingInfo.userStatus || ''
