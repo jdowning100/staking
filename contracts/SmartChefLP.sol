@@ -51,8 +51,8 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   // ---------------------------
 
   // Global periods (seconds)
-  uint256 public REWARD_DELAY_PERIOD = 30 days;
-  uint256 public EXIT_PERIOD         = 30 days;
+  uint256 public REWARD_DELAY_PERIOD = 10 minutes;
+  uint256 public EXIT_PERIOD         = 10 minutes;
 
   IERC20  public lpToken;
 

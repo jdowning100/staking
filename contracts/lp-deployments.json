@@ -1,10 +1,10 @@
 {
   "network": "https://rpc.quai.network",
   "chainId": "9",
-  "timestamp": "2025-10-15T20:36:50.079Z",
+  "timestamp": "2025-10-15T21:03:28.153Z",
   "contracts": [
     {
-      "contractAddress": "0x0055A18B7209e3D777673F46C9005577f3a2A120",
+      "contractAddress": "0x0050ad2b4CFB4dF2c62181818FF0168007eC6356",
       "lpToken": "0x001f91029Df78aF6D13cbFfa8724F1b2718da3F1",
       "poolName": "WQI-QUAI"
     }
