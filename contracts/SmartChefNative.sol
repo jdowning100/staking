@@ -170,7 +170,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
   }
 
   function _safeTransferNative(address _to, uint256 _amount) internal {
-    (bool success, ) = _to.call{ value: _amount, gas: 2300 }("");
+    (bool success, ) = _to.call{ value: _amount }("");
     require(success, "Native transfer failed");
   }
 
@@ -316,7 +316,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
    * Emergency withdrawal: Allows users to withdraw their principal (native tokens) without rewards
    * when the contract is paused. Does not claim rewards or respect locks/exits.
    */
-  function emergencyWithdraw() external whenPaused {
+  function emergencyWithdraw() external nonReentrant whenPaused {
     UserInfo storage user = userInfo[msg.sender];
     uint256 amt = user.amount + user.withdrawalAmount; // Include any in-exit amount
     require(amt > 0, "No funds to withdraw");
