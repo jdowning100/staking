@@ -11,9 +11,9 @@
 const quais = require('quais');
 require('dotenv').config();
 
-function isAddr(x){ return /^0x[0-9a-fA-F]{40}$/.test(x||''); }
+function isAddr(x) { return /^0x[0-9a-fA-F]{40}$/.test(x || ''); }
 
-async function tryCall(c, method, args = []){
+async function tryCall(c, method, args = []) {
   if (!c[method]) return undefined;
   try { return await c[method](...args); } catch { return undefined; }
 }
@@ -22,7 +22,7 @@ function fmt(v) {
   try { return quais.formatQuai(v); } catch { return v?.toString?.() ?? String(v); }
 }
 
-async function main(){
+async function main() {
   const [, , ca, user] = process.argv;
   if (!isAddr(ca) || !isAddr(user)) {
     console.error('Usage: node contracts/query-pending.js <stakingContract> <userAddress>');
@@ -34,49 +34,51 @@ async function main(){
   // Aggregate ABI with optional methods used across Native and LP
   const ABI = [
     // global pool info
-    { inputs: [], name: 'rewardPerBlock', outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [], name: 'startBlock',     outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [], name: 'getRewardBalance', outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [], name: 'REWARD_DELAY_PERIOD', outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
+    { inputs: [], name: 'rewardPerBlock', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [], name: 'startBlock', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [], name: 'getRewardBalance', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [], name: 'REWARD_DELAY_PERIOD', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
 
     // user views (common)
-    { inputs: [{name:'_user',type:'address'}], name: 'claimableView', outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [{name:'_user',type:'address'}], name: 'lockedView',     outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
+    { inputs: [{ name: '_user', type: 'address' }], name: 'claimableView', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [{ name: '_user', type: 'address' }], name: 'lockedView', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
     // legacy names
-    { inputs: [{name:'_user',type:'address'}], name: 'claimableRewards',     outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [{name:'_user',type:'address'}], name: 'totalDelayedRewards',  outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
+    { inputs: [{ name: '_user', type: 'address' }], name: 'claimableRewards', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [{ name: '_user', type: 'address' }], name: 'totalDelayedRewards', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
 
-    { inputs: [{name:'_user',type:'address'}], name: 'pendingReward', outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [], name: 'pendingReward', outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [{name:'_user',type:'address'}], name: 'timeUntilUnlock', outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [{name:'_user',type:'address'}], name: 'timeUntilWithdrawalAvailable', outputs: [{type:'uint256'}], stateMutability: 'view', type: 'function' },
-    { inputs: [{name:'_user',type:'address'}], name: 'isInExitPeriod', outputs: [{type:'bool'}], stateMutability: 'view', type: 'function' },
+    { inputs: [{ name: '_user', type: 'address' }], name: 'pendingReward', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [], name: 'pendingReward', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [{ name: '_user', type: 'address' }], name: 'timeUntilUnlock', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [{ name: '_user', type: 'address' }], name: 'timeUntilWithdrawalAvailable', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+    { inputs: [{ name: '_user', type: 'address' }], name: 'isInExitPeriod', outputs: [{ type: 'bool' }], stateMutability: 'view', type: 'function' },
 
     // structs
-    { inputs: [{name:'',type:'address'}], name: 'userInfo', outputs: [
-      {type:'uint256', name:'amount'},
-      {type:'uint256', name:'effectiveAmount'},
-      {type:'uint256', name:'rewardDebt'},
-      {type:'uint256', name:'debtClaimablePS'},
-      {type:'uint256', name:'lockStartTime'}, // native may use lockStartBlock
-      {type:'uint256', name:'lockDuration'},
-      {type:'uint256', name:'withdrawRequestTime'},
-      {type:'uint256', name:'withdrawalAmount'},
-      {type:'uint256', name:'delayedReward'},
-      {type:'uint256', name:'delayedUnlockBlock'}
-    ], stateMutability:'view', type:'function' },
+    {
+      inputs: [{ name: '', type: 'address' }], name: 'userInfo', outputs: [
+        { type: 'uint256', name: 'amount' },
+        { type: 'uint256', name: 'effectiveAmount' },
+        { type: 'uint256', name: 'rewardDebt' },
+        { type: 'uint256', name: 'debtClaimablePS' },
+        { type: 'uint256', name: 'lockStartTime' }, // native may use lockStartBlock
+        { type: 'uint256', name: 'lockDuration' },
+        { type: 'uint256', name: 'withdrawRequestTime' },
+        { type: 'uint256', name: 'withdrawalAmount' },
+        { type: 'uint256', name: 'delayedReward' },
+        { type: 'uint256', name: 'delayedUnlockBlock' }
+      ], stateMutability: 'view', type: 'function'
+    },
   ];
 
   const c = new quais.Contract(ca, ABI, provider);
-  const currentBlock = await provider.getBlockNumber().catch(()=>0);
+  const currentBlock = await provider.getBlockNumber("cyprus1")
   const [rewardPerBlock, startBlock, rewardBal, delaySec] = await Promise.all([
-    tryCall(c,'rewardPerBlock'), tryCall(c,'startBlock'), tryCall(c,'getRewardBalance'), tryCall(c,'REWARD_DELAY_PERIOD')
+    tryCall(c, 'rewardPerBlock'), tryCall(c, 'startBlock'), tryCall(c, 'getRewardBalance'), tryCall(c, 'REWARD_DELAY_PERIOD')
   ]);
 
   // user views with fallbacks
   let claimable = await tryCall(c, 'claimableView', [user]);
   if (claimable === undefined) claimable = await tryCall(c, 'claimableRewards', [user]);
-  let locked = await tryCall(c,'lockedView',[user]);
+  let locked = await tryCall(c, 'lockedView', [user]);
   if (locked === undefined) locked = await tryCall(c, 'totalDelayedRewards', [user]);
 
   // pending (best-effort)

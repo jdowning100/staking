@@ -31,11 +31,11 @@ async function deploySmartChefNative() {
   console.log('\n=== Deploying SmartChefNative Contract ===')
   try {
     // Get current block and compute start block
-    const currentBlock = await provider.getBlockNumber()
-    const startBlock = currentBlock + 10
+    const currentBlock = await provider.getBlockNumber("cyprus1")
+    const startBlock = currentBlock
 
     // Configuration - consistent with frontend config
-    const poolLimitPerUser = quais.parseQuai('1000') // 1000 QUAI max per user
+    const poolLimitPerUser = quais.parseQuai('10000000') // 1000 QUAI max per user
 
     // Set periods to 10 minutes for testing (600 seconds)
     const rewardDelayPeriod = 600 // 10 minutes reward delay
@@ -45,7 +45,7 @@ async function deploySmartChefNative() {
     console.log('Pool limit per user:', quais.formatQuai(poolLimitPerUser), 'QUAI')
     console.log('Reward delay period:', rewardDelayPeriod, 'seconds')
     console.log('Exit period:', exitPeriod, 'seconds')
-    const rewardPerBlock = quais.parseQuai('0.01')
+    const rewardPerBlock = quais.parseQuai('100')
     console.log('Reward per block:', quais.formatQuai(rewardPerBlock), 'QUAI')
     console.log('Start block:', startBlock)
 

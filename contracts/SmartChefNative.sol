@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  * Sliding-window vesting via accTokenPerShare checkpoints.
  * - Users have a "baseline" per-share (debtClaimablePS). What's claimable now is
  *   E * (accPS_at(block - delay) - baseline). No writes are needed to *view* it.
- * - We keep a small ring of checkpoints and INTERPOLATE between them for smooth vesting.
+ * - We keep a small ring of checkpoints and integrate piece-wise between them.
  * - Early exits are DISALLOWED. Unlocked exits move stake into an exit queue; rewards
  *   already streamed but inside the delay window keep vesting "virtually" and are captured
  *   at request time into (delayedReward, delayedUnlockBlock) so users can still claim them
@@ -48,16 +48,16 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
 
   bool     public hasUserLimit;
   uint256  public poolLimitPerUser;
-  uint256  public PRECISION_FACTOR; // 1e12+ scale for per-share math (here 1e12)
+  uint256  public PRECISION_FACTOR; // internal scale for per-share math (1e12 here)
 
   // Timelock for parameter changes (24 hours)
   uint256 public constant PARAM_CHANGE_DELAY = 24 hours;
-  
+
   struct PendingChange {
     uint256 value;
     uint256 executeAfter;
   }
-  
+
   mapping(bytes32 => PendingChange) public pendingChanges;
 
   // ---------------------------
@@ -78,14 +78,12 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
   struct Checkpoint { 
     uint64 blockNum; 
     uint256 acc;
-    uint256 activeEffective; // Track active effective at checkpoint for zero-handling
+    uint256 rate; // accrual rate per block (rewardPerBlock * PRECISION_FACTOR / totalActiveEffective, or 0 if zero active)
   }
   uint16 internal constant MAX_CHECKPOINTS = 256;
   mapping(uint16 => Checkpoint) internal _checkpoints;
   uint16 internal _cpHead;        // last written index
   uint16 internal _cpSize;        // number of valid checkpoints
-  uint64 public  checkpointInterval = 60; // ~5 minutes at 5s/block (increased from 6)
-  uint64 internal lastCheckpointBlock;
 
   // Permanent freeze flag
   bool private _permanentlyFrozen;
@@ -122,15 +120,15 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     REWARD_DELAY_PERIOD = _rewardDelayPeriod;
     EXIT_PERIOD         = _exitPeriod;
 
-    // Native has 18 decimals; target 30-decimal internal precision
-    PRECISION_FACTOR = 10 ** (30 - 18);
+    // Use 1e12 internal precision (native 18 decimals => overall ~1e30 resolution if needed)
+    PRECISION_FACTOR = 1e12;
 
     rewardPerBlock  = _rewardPerBlock;
     startBlock      = _startBlock > block.number ? _startBlock : block.number;
     lastRewardBlock = startBlock;
 
-    lastCheckpointBlock = uint64(block.number);
-    _pushCheckpoint(uint64(block.number), 0, 0); // initial
+    uint256 initRate = totalActiveEffective == 0 ? 0 : Math.mulDiv(rewardPerBlock, PRECISION_FACTOR, totalActiveEffective);
+    _pushCheckpoint(uint64(block.number), 0, initRate); // initial
   }
 
   // ---------------------------
@@ -212,6 +210,11 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     user.lockDurationBlocks = _duration / blockTime;
 
     user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
+
+    // rate changed (denominator changed) -> push checkpoint
+    uint256 newRate = totalActiveEffective == 0 ? 0 : Math.mulDiv(rewardPerBlock, PRECISION_FACTOR, totalActiveEffective);
+    _pushCheckpoint(uint64(block.number), accTokenPerShare, newRate);
+
     emit Deposit(msg.sender, _amount, _duration);
   }
 
@@ -252,13 +255,16 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
 
     user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
 
+    // rate changed (denominator changed) -> push checkpoint
+    uint256 newRate = totalActiveEffective == 0 ? 0 : Math.mulDiv(rewardPerBlock, PRECISION_FACTOR, totalActiveEffective);
+    _pushCheckpoint(uint64(block.number), accTokenPerShare, newRate);
+
     uint256 availableTime = block.timestamp + EXIT_PERIOD;
     emit WithdrawRequested(msg.sender, _amount, availableTime);
   }
 
   function executeWithdraw() external nonReentrant whenNotPaused {
     // Auto-claim any matured rewards (unlocked snapshot and sliding-window portion)
-    // so users receive vested rewards alongside principal withdrawal.
     _claimRewardsInternal(msg.sender, 0);
     UserInfo storage user = userInfo[msg.sender];
     require(user.withdrawRequestBlock > 0, "No request");
@@ -310,6 +316,10 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     user.delayedUnlockBlock  = 0;
 
     user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
+
+    // rate changed (denominator changed) -> push checkpoint
+    uint256 newRate = totalActiveEffective == 0 ? 0 : Math.mulDiv(rewardPerBlock, PRECISION_FACTOR, totalActiveEffective);
+    _pushCheckpoint(uint64(block.number), accTokenPerShare, newRate);
   }
 
   /**
@@ -322,9 +332,9 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     require(amt > 0, "No funds to withdraw");
 
     // Reset user state
-    totalStaked -= user.amount;
+    totalStaked        -= user.amount;
     totalActiveEffective -= user.effectiveAmount;
-    totalInExitPeriod -= user.withdrawalAmount;
+    totalInExitPeriod  -= user.withdrawalAmount;
 
     user.amount = 0;
     user.effectiveAmount = 0;
@@ -338,8 +348,12 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     user.delayedReward = 0;
     user.delayedUnlockBlock = 0;
 
+    // rate changed (denominator changed) -> push checkpoint
+    uint256 newRate = totalActiveEffective == 0 ? 0 : Math.mulDiv(rewardPerBlock, PRECISION_FACTOR, totalActiveEffective);
+    _pushCheckpoint(uint64(block.number), accTokenPerShare, newRate);
+
     _safeTransferNative(msg.sender, amt);
-    emit WithdrawExecuted(msg.sender, amt); // Reuse event for logging
+    emit WithdrawExecuted(msg.sender, amt);
   }
 
   // ---------------------------
@@ -396,7 +410,6 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
       if (pay >= owed) {
         user.debtClaimablePS = accPast;
       } else {
-        // Direct calculation minimizes rounding loss
         uint256 delta = accPast > baseline ? accPast - baseline : 0;
         if (delta > 0) {
           uint256 advance = Math.mulDiv(pay, delta, owed);
@@ -421,35 +434,12 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     uint256 active = _activeEffective();
     if (active == 0) return 0;
 
-    uint256 adjusted = accTokenPerShare;
-    if (block.number > lastRewardBlock) {
-      uint256 mult = block.number - lastRewardBlock;
-      uint256 toAlloc = 0;
-      while (mult > 0 && rewardPerBlock > 0) {
-          uint256 safeMult = mult > (type(uint256).max / rewardPerBlock) ? (type(uint256).max / rewardPerBlock) : mult;
-          toAlloc += safeMult * rewardPerBlock;
-          mult -= safeMult;
-      }
-
-      uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? totalAccruedRewards - totalClaimedRewards : 0;
-      uint256 currentRewards = _rewardBalance();
-      uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
-      if (toAlloc > allocCap) toAlloc = allocCap;
-
-      if (toAlloc > 0) {
-        uint256 prec = PRECISION_FACTOR;
-        while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
-            prec /= 10;
-        }
-        adjusted += Math.mulDiv(toAlloc, prec, active);
-      }
-    }
-
+    uint256 adjusted = _accPSNowView();
     uint256 earned = Math.mulDiv(user.effectiveAmount, adjusted, PRECISION_FACTOR);
     if (earned >= user.rewardDebt) {
         return earned - user.rewardDebt;
     }
-    return 0;  // Prevent underflow revert; assumes minor rounding desync
+    return 0;
   }
 
   // Pure read-only: what's claimable now from the sliding window + unlocked delayed snapshot
@@ -611,9 +601,12 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     if (block.number <= lastRewardBlock) return;
 
     uint256 active = _activeEffective();
-    if (active == 0) { 
+    if (active == 0) {
       lastRewardBlock = block.number;
-      return; 
+      if (_cpSize == 0 || _checkpoints[_cpHead].rate != 0) {
+        _pushCheckpoint(uint64(block.number), accTokenPerShare, 0);
+      }
+      return;
     }
 
     uint256 mult = block.number - lastRewardBlock;
@@ -639,75 +632,36 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
         totalAccruedRewards += toAlloc;
     }
     lastRewardBlock = block.number;
-
-    if (uint64(block.number) - lastCheckpointBlock >= checkpointInterval) {
-        _pushCheckpoint(uint64(block.number), accTokenPerShare, totalActiveEffective);
-        lastCheckpointBlock = uint64(block.number);
-    }
   }
 
   function _accPSNowView() internal view returns (uint256) {
+    if (_cpSize == 0) return accTokenPerShare;
+
+    (bool ok, /*Checkpoint memory prev*/ ) = _findPrevCp(uint64(block.number));
+    if (!ok) return accTokenPerShare;
+
     uint256 active = _activeEffective();
     if (active == 0) return accTokenPerShare;
+
     if (block.number <= lastRewardBlock) return accTokenPerShare;
 
-    uint256 mult = block.number - lastRewardBlock;
-    if (mult == 0) return accTokenPerShare;
+    uint256 deltaBlocks = block.number - lastRewardBlock;
+    if (deltaBlocks == 0) return accTokenPerShare;
 
-    uint256 toAlloc = 0;
-    while (mult > 0 && rewardPerBlock > 0) {
-        uint256 safeMult = mult > (type(uint256).max / rewardPerBlock) ? (type(uint256).max / rewardPerBlock) : mult;
-        toAlloc += safeMult * rewardPerBlock;
-        mult -= safeMult;
-    }
+    // Ideal emission ignoring budget:
+    uint256 toAlloc = rewardPerBlock * deltaBlocks;
 
-    uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? totalAccruedRewards - totalClaimedRewards : 0;
+    // Apply the same budget cap as _updatePool()
+    uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? (totalAccruedRewards - totalClaimedRewards) : 0;
     uint256 currentRewards = _rewardBalance();
-    uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
+    uint256 allocCap = currentRewards > undistributed ? (currentRewards - undistributed) : 0;
     if (toAlloc > allocCap) toAlloc = allocCap;
     if (toAlloc == 0) return accTokenPerShare;
 
     uint256 prec = PRECISION_FACTOR;
-    while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
-        prec /= 10;
-    }
+    while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) { prec /= 10; }
+
     return accTokenPerShare + Math.mulDiv(toAlloc, prec, active);
-  }
-
-  // Interpolated accPS at a past block (for sliding-window vesting)
-  function _accPSAtBlock(uint64 targetBlock) internal view returns (uint256) {
-    if (_cpSize == 0) return 0;
-
-    (bool hasPrev, Checkpoint memory prev) = _findPrevCp(targetBlock);
-    (bool hasNext, Checkpoint memory next_) = _findNextCp(prev.blockNum);
-
-    if (!hasPrev) return 0;
-
-    // Handle zero active
-    if (prev.activeEffective == 0) return prev.acc;
-
-    if (!hasNext || targetBlock >= next_.blockNum) {
-      // No next: prorate from prev to target using current projected acc
-      if (targetBlock > prev.blockNum) {
-        uint256 currentAcc = _accPSNowView();
-        uint256 prorataDeltaAcc = currentAcc - prev.acc;
-        uint256 fullSpan = uint256(block.number) - prev.blockNum;
-        if (fullSpan == 0) return prev.acc;
-
-        uint256 prorataInto = uint256(targetBlock) - prev.blockNum;
-        if (prorataInto > fullSpan) prorataInto = fullSpan;
-
-        return prev.acc + Math.mulDiv(prorataDeltaAcc, prorataInto, fullSpan);
-      }
-      return prev.acc;
-    }
-
-    // Linear interpolation between prev and next
-    if (next_.blockNum == prev.blockNum) return prev.acc;
-    uint256 span = next_.blockNum - prev.blockNum;
-    uint256 into = targetBlock - prev.blockNum;
-    uint256 deltaAcc = next_.acc - prev.acc;
-    return prev.acc + Math.mulDiv(deltaAcc, into, span);
   }
 
   function _findPrevCp(uint64 target) internal view returns (bool, Checkpoint memory) {
@@ -717,7 +671,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     bool ok = false;
     while (count < _cpSize) {
       Checkpoint memory cp = _checkpoints[idx];
-      if (cp.blockNum != 0 && cp.blockNum <= target && (!ok || cp.blockNum >= best.blockNum)) {
+      if (cp.blockNum != 0 && cp.blockNum <= target && (!ok || cp.blockNum > best.blockNum)) {
         best = cp; ok = true;
       }
       if (idx == 0) idx = MAX_CHECKPOINTS - 1; else idx--;
@@ -726,32 +680,53 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     return (ok, best);
   }
 
-  function _findNextCp(uint64 prevBlock) internal view returns (bool, Checkpoint memory) {
-    // Calculate oldest index in the ring buffer
+  function _findNextCp(uint64 afterBlock) internal view returns (bool, Checkpoint memory) {
+    if (_cpSize == 0) return (false, Checkpoint(0,0,0));
+    // walk forward oldest -> head
     uint16 count = 0;
-    uint16 oldest;
-    if (_cpSize >= _cpHead + 1) {
-      oldest = (_cpHead + MAX_CHECKPOINTS + 1 - _cpSize) % MAX_CHECKPOINTS;
-    } else {
-      oldest = _cpHead + 1 - _cpSize;
-    }
-    
-    // Walk forward oldest → head
+    uint16 oldest = (_cpHead + MAX_CHECKPOINTS + 1 - _cpSize) % MAX_CHECKPOINTS;
     uint16 i = oldest;
-    while (count < _cpSize) {
-      Checkpoint memory cp = _checkpoints[i];
-      if (cp.blockNum > prevBlock) return (true, cp);
-      if (i == _cpHead) break;
-      i = (i + 1) % MAX_CHECKPOINTS;
-      count++;
+    while (true) {
+        Checkpoint memory cp = _checkpoints[i];
+        if (cp.blockNum > afterBlock) return (true, cp);
+        if (i == _cpHead) break;
+        i = (i + 1) % MAX_CHECKPOINTS;
+        count++;
+        if (count >= _cpSize) break;
     }
-    return (false, Checkpoint({blockNum: 0, acc: 0, activeEffective: 0}));
+    return (false, Checkpoint(0,0,0));
   }
 
-  function _pushCheckpoint(uint64 blockNum, uint256 acc, uint256 activeEff) internal {
+  // Piece-wise integration across checkpoints up to targetBlock
+  function _accPSAtBlock(uint64 targetBlock) internal view returns (uint256) {
+    if (_cpSize == 0) return accTokenPerShare;
+
+    (bool okPrev, Checkpoint memory prev) = _findPrevCp(targetBlock);
+    if (!okPrev) return 0;
+
+    uint256 acc = prev.acc;
+    uint64 cursor = prev.blockNum;
+
+    while (true) {
+        (bool okNext, Checkpoint memory next_) = _findNextCp(cursor);
+        uint64 end = okNext && next_.blockNum < targetBlock ? next_.blockNum : targetBlock;
+
+        if (end > cursor && prev.rate > 0) {
+            acc += uint256(end - cursor) * prev.rate;
+        }
+        if (!okNext || next_.blockNum >= targetBlock) break;
+
+        prev = next_;
+        cursor = prev.blockNum;
+    }
+
+    return acc;
+  }
+
+  function _pushCheckpoint(uint64 blockNum, uint256 acc, uint256 rate) internal {
     uint16 next = _cpHead + 1;
     if (next >= MAX_CHECKPOINTS) next = 0;
-    _checkpoints[next] = Checkpoint({ blockNum: blockNum, acc: acc, activeEffective: activeEff });
+    _checkpoints[next] = Checkpoint({ blockNum: blockNum, acc: acc, rate: rate });
     _cpHead = next;
     if (_cpSize < MAX_CHECKPOINTS) _cpSize++;
   }
@@ -773,11 +748,14 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     PendingChange memory change = pendingChanges[paramHash];
     require(change.executeAfter > 0, "No pending change");
     require(block.timestamp >= change.executeAfter, "Timelock not expired");
-    
     _updatePool();
     rewardPerBlock = change.value;
     delete pendingChanges[paramHash];
-    
+
+    // push checkpoint on rate change
+    uint256 newRate = totalActiveEffective == 0 ? 0 : Math.mulDiv(rewardPerBlock, PRECISION_FACTOR, totalActiveEffective);
+    _pushCheckpoint(uint64(block.number), accTokenPerShare, newRate);
+
     emit NewRewardPerBlock(change.value);
     emit ParameterChangeExecuted(paramHash, change.value);
   }
@@ -818,36 +796,44 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     emit NewPoolLimit(poolLimitPerUser);
   }
 
-  function fundRewards() external payable onlyOwner {
-    require(msg.value > 0, "No value");
-    emit RewardsFunded(msg.value);
-  }
-
   function emergencyRewardWithdraw(uint256 _amount) external onlyOwner {
-    _updatePool();
+    _updatePool(); // settle accTokenPerShare and accrued accounting
     uint256 rb = _rewardBalance();
     require(_amount <= rb, "Cannot withdraw principal");
+
     _safeTransferNative(msg.sender, _amount);
   }
 
-  // Improved setBaseAPY with validation
+  // Set rewardPerBlock based on target APY (basis points) over active principal.
   function setBaseAPY(uint256 _apyBps) external onlyOwner {
     _updatePool();
-    require(_apyBps <= 1000000, "APY too high");
+    require(_apyBps <= 1_000_000, "APY too high"); // <= 10,000% APR in bps
+
     uint256 activePrincipal = _activePrincipal();
     uint256 blocksPerYear   = 365 days / blockTime;
-    
-    if (activePrincipal > 0) {
-      rewardPerBlock = Math.mulDiv(activePrincipal, _apyBps, (blocksPerYear * 10000));
-    } else {
-      revert("No active principal - use setRewardPerBlock instead");
+
+    if (activePrincipal == 0) {
+        revert("No active principal - use setRewardPerBlock instead");
     }
+
+    // rewardPerBlock = activePrincipal * apyBps / (blocksPerYear * 10000)
+    rewardPerBlock = Math.mulDiv(activePrincipal, _apyBps, (blocksPerYear * 10000));
+
+    uint256 newRate = totalActiveEffective == 0 ? 0
+        : Math.mulDiv(rewardPerBlock, PRECISION_FACTOR, totalActiveEffective);
+    _pushCheckpoint(uint64(block.number), accTokenPerShare, newRate);
+
     emit NewRewardPerBlock(rewardPerBlock);
   }
 
   function setRewardPerBlock(uint256 _rewardPerBlock) external onlyOwner {
     _updatePool();
     rewardPerBlock = _rewardPerBlock;
+
+    uint256 newRate = totalActiveEffective == 0 ? 0
+        : Math.mulDiv(rewardPerBlock, PRECISION_FACTOR, totalActiveEffective);
+    _pushCheckpoint(uint64(block.number), accTokenPerShare, newRate);
+
     emit NewRewardPerBlock(_rewardPerBlock);
   }
 
@@ -856,11 +842,6 @@ contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
     uint256 old = blockTime;
     blockTime = _newBlockTime;
     emit BlockTimeUpdated(old, _newBlockTime);
-  }
-
-  function updateCheckpointInterval(uint64 _newInterval) external onlyOwner {
-    require(_newInterval >= 6 && _newInterval <= 1000, "Invalid interval");
-    checkpointInterval = _newInterval;
   }
 
   // ---------------------------
