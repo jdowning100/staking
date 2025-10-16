@@ -647,7 +647,11 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
             {isNativeQuai ? (
               stakingData?.contractInfo ? (
                 <>
-                  {stakingData.contractInfo.activeStakedFormatted ?? stakingData.contractInfo.totalStakedFormatted} {pool.tokens[0]}
+                  {(() => {
+                    const v = stakingData.contractInfo.activeStakedFormatted ?? stakingData.contractInfo.totalStakedFormatted;
+                    const n = Number(v || '0');
+                    return n.toLocaleString('en-US', { maximumFractionDigits: 3 });
+                  })()} {pool.tokens[0]}
                   <span className="text-xs text-[#666666] ml-2">
                     ~${formatNumber(Number(stakingData.contractInfo.activeStakedFormatted ?? stakingData.contractInfo.totalStakedFormatted) * 0.05)}
                   </span>
@@ -663,7 +667,10 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
               hasRealLPData ? (
                 lpStakingData.poolMetrics ? (
                   <>
-                    {formatBalance(lpStakingData.poolMetrics.totalStakedFormatted)} LP
+                    {(() => {
+                      const n = Number(lpStakingData.poolMetrics.totalStakedFormatted || '0');
+                      return n.toLocaleString('en-US', { maximumFractionDigits: 3 });
+                    })()} LP
                     <span className="text-xs text-[#666666] ml-2">
                       ~${formatNumber(Number(lpStakingData.poolMetrics.totalStakedFormatted) * 0.05)}
                     </span>
@@ -704,7 +711,7 @@ const PoolCard = ({ pool, stakingData, lpStakingData, isStakingLoading, isLPLoad
               <div className="space-y-1">
                 <span className="text-xs text-[#999999]">Earned:</span>
                 <div className="text-orange-400 font-semibold text-sm">
-                  {formatBalance(userStake.earned)} {isWQIQuaiLP ? 'QUAI' : pool.tokens[0]}
+                  {Number(userStake.earned || 0).toLocaleString('en-US', { maximumFractionDigits: 3 })} {isWQIQuaiLP ? 'QUAI' : pool.tokens[0]}
                 </div>
               </div>
             </div>

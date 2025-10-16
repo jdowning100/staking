@@ -256,11 +256,20 @@ export default function StakePage() {
                       <span className="text-xs text-[#666666]">Loading...</span>
                     </div>
                   ) : (
-                    isRealStaking && staking.contractInfo ?
-                      (staking.contractInfo.activeStakedFormatted ?? staking.contractInfo.totalStakedFormatted) :
-                      isRealLPPool && lpStaking.poolInfo?.poolMetrics ?
-                        `${parseFloat(lpStaking.poolInfo.poolMetrics.totalStakedFormatted).toFixed(2)}` :
-                        formatNumber(pool.totalStaked)
+                    isRealStaking && staking.contractInfo ? (
+                      (() => {
+                        const v = staking.contractInfo.activeStakedFormatted ?? staking.contractInfo.totalStakedFormatted;
+                        const n = Number(v || '0');
+                        return n.toLocaleString('en-US', { maximumFractionDigits: 3 });
+                      })()
+                    ) : isRealLPPool && lpStaking.poolInfo?.poolMetrics ? (
+                      (() => {
+                        const n = Number(lpStaking.poolInfo.poolMetrics.totalStakedFormatted || '0');
+                        return n.toLocaleString('en-US', { maximumFractionDigits: 3 });
+                      })()
+                    ) : (
+                      formatNumber(pool.totalStaked)
+                    )
                   )}
                 </div>
                 <div className="text-xs text-[#666666]">Active Staked</div>
@@ -322,7 +331,7 @@ export default function StakePage() {
           {showDetails && isRealStaking && staking.contractInfo && (
             <CardContent className="pt-0 border-t border-[#333333]">
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-1">
                     <p className="text-[#999999]">Current Block</p>
                     <p className="font-medium text-white">
@@ -332,7 +341,7 @@ export default function StakePage() {
                         rel="noopener noreferrer"
                         className="flex items-center hover:text-red-9"
                       >
-                        <span>{staking.contractInfo.currentBlock}</span>
+                        <span>{Number(staking.contractInfo.currentBlock).toLocaleString('en-US')}</span>
                         <ExternalLink className="w-3 h-3 ml-1" />
                       </a>
                     </p>
@@ -340,7 +349,7 @@ export default function StakePage() {
                   <div className="space-y-1">
                     <p className="text-[#999999]">Reward Per Block</p>
                     <p className="font-medium text-white">
-                      {staking.contractInfo.rewardPerBlockFormatted} QUAI
+                      {Number(staking.contractInfo.rewardPerBlockFormatted || '0').toLocaleString('en-US', { maximumFractionDigits: 6 })} QUAI
                     </p>
                   </div>
                 </div>
@@ -349,13 +358,13 @@ export default function StakePage() {
                   <div className="space-y-1">
                     <p className="text-[#999999]">Contract Balance</p>
                     <p className="font-medium text-white">
-                      {staking.contractInfo.contractBalanceFormatted} QUAI
+                      {Number(staking.contractInfo.contractBalanceFormatted || '0').toLocaleString('en-US', { maximumFractionDigits: 6 })} QUAI
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[#999999]">Reward Balance</p>
                     <p className="font-medium text-white">
-                      {staking.contractInfo.rewardBalanceFormatted} QUAI
+                      {Number(staking.contractInfo.rewardBalanceFormatted || '0').toLocaleString('en-US', { maximumFractionDigits: 6 })} QUAI
                     </p>
                   </div>
                 </div>
@@ -363,7 +372,7 @@ export default function StakePage() {
                 {staking.contractInfo.hasUserLimit && (
                   <div className="p-3 bg-[#222222] rounded-md">
                     <p className="text-[#999999] text-sm">
-                      Pool Limit Per User: {staking.contractInfo.poolLimitPerUserFormatted} QUAI
+                      Pool Limit Per User: {Number(staking.contractInfo.poolLimitPerUserFormatted || '0').toLocaleString('en-US', { maximumFractionDigits: 6 })} QUAI
                     </p>
                   </div>
                 )}

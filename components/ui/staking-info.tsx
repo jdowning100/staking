@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserStakingInfo, ContractInfo, DelayedReward } from '@/lib/hooks/useStaking';
 import { Progress } from '@/components/ui/progress';
+import { formatUnits } from 'quais';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { TOKEN_SYMBOL } from '@/lib/config';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,18 @@ export function StakingInfo({
   availableBalanceFormatted,
   availableBalanceLabel
 }: StakingInfoProps) {
+  const withCommas = (v: string | number) => {
+    const n = typeof v === 'string' ? Number(v) : v;
+    if (isNaN(n as number)) return String(v);
+    return (n as number).toLocaleString('en-US', { maximumFractionDigits: 6 });
+  };
+  const formatClaimableSmart = (v: bigint) => {
+    if (!v || v === BigInt(0)) return '0';
+    const asNum = parseFloat(formatUnits(v, 18));
+    if (asNum === 0) return '0';
+    if (asNum < 0.001) return asNum.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 6 });
+    return asNum.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+  };
   const [showDetails, setShowDetails] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -65,13 +78,15 @@ export function StakingInfo({
 
   const handleDeposit = async () => {
     if (!depositAmount || parseFloat(depositAmount) <= 0) return;
-    await onDeposit(depositAmount, stakePeriod);
+    const raw = depositAmount.replace(/,/g, '');
+    await onDeposit(raw, stakePeriod);
     setDepositAmount('');
   };
 
   const handleRequestWithdraw = async () => {
     if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) return;
-    await onRequestWithdraw(withdrawAmount);
+    const raw = withdrawAmount.replace(/,/g, '');
+    await onRequestWithdraw(raw);
     setWithdrawAmount('');
   };
 
@@ -97,6 +112,19 @@ export function StakingInfo({
     } else {
       return `${minutes}m`;
     }
+  };
+
+  // Input formatting with commas (keeps decimals)
+  const formatInputWithCommas = (value: string) => {
+    // remove invalid chars, keep digits and dots
+    let v = (value || '').replace(/[^0-9.]/g, '');
+    if (!v) return '';
+    // keep only first dot
+    const parts = v.split('.');
+    const int = parts[0].replace(/^0+(\d)/, '$1');
+    const dec = parts.length > 1 ? parts.slice(1).join('') : undefined;
+    const intFmt = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return dec !== undefined && dec.length > 0 ? `${intFmt}.${dec}` : intFmt;
   };
 
   if (isLoading) {
@@ -179,7 +207,7 @@ export function StakingInfo({
           <div key={index} className="p-3 bg-[#222222] rounded-lg">
             <div className="flex justify-between items-center">
               <span className="text-white font-medium">
-                {reward.amountFormatted} {TOKEN_SYMBOL}
+                {withCommas(reward.amountFormatted)} {TOKEN_SYMBOL}
               </span>
               <span className={cn(
                 "text-sm",
@@ -202,7 +230,7 @@ export function StakingInfo({
                 Processing...
               </>
             ) : (
-              `Claim ${userInfo.claimableRewardsFormatted} QUAI`
+              `Claim ${withCommas(userInfo.claimableRewardsFormatted)} QUAI`
             )}
           </Button>
         ) : (
@@ -320,20 +348,20 @@ export function StakingInfo({
               <div className="flex justify-between">
                 <span className="text-[#999999]">Your Stake</span>
                 <span className="font-medium text-white">
-                  {userInfo.stakedAmountFormatted} {STAKED_SYMBOL}
+                  {withCommas(userInfo.stakedAmountFormatted)} {STAKED_SYMBOL}
                 </span>
               </div>
               {/* Reward Metrics */}
               <div className="flex justify-between">
                 <span className="text-[#999999]">Claimable Rewards</span>
                 <span className="font-medium text-white">
-                  {userInfo.claimableRewardsFormatted} {REWARD_SYMBOL}
+                  {withCommas(userInfo.claimableRewardsFormatted)} {REWARD_SYMBOL}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#999999]">Vesting Rewards</span>
                 <span className="font-medium text-white">
-                  {userInfo.totalDelayedRewardsFormatted} {REWARD_SYMBOL}
+                  {withCommas(userInfo.totalDelayedRewardsFormatted)} {REWARD_SYMBOL}
                 </span>
               </div>
               {(() => {
@@ -345,7 +373,7 @@ export function StakingInfo({
                   <div className="flex justify-between">
                     <span className="text-[#999999]">Total Rewards</span>
                     <span className="font-medium text-white">
-                      {totalEarnedFormatted} {REWARD_SYMBOL}
+                      {withCommas(totalEarnedFormatted)} {REWARD_SYMBOL}
                     </span>
                   </div>
                 );
@@ -438,7 +466,7 @@ export function StakingInfo({
                   <div className="flex items-center justify-between text-xs text-[#999999]">
                     <span>{availableBalanceLabel || 'Available Balance'}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-white">{availableBalanceFormatted} {STAKED_SYMBOL}</span>
+                      <span className="text-white">{withCommas(availableBalanceFormatted || '0')} {STAKED_SYMBOL}</span>
                       <button
                         type="button"
                         className="px-2 py-0.5 rounded bg-[#222222] text-[#bbbbbb] hover:bg-[#2a2a2a]"
@@ -463,10 +491,10 @@ export function StakingInfo({
                 )}
 
                 <Input
-                  type="number"
+                  type="text"
                   placeholder={`Amount to deposit (${STAKED_SYMBOL})`}
                   value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
+                  onChange={(e) => setDepositAmount(formatInputWithCommas(e.target.value))}
                   className="bg-[#222222] border-[#333333] text-white"
                   disabled={isTransacting || userInfo?.isInExitPeriod}
                 />
@@ -628,10 +656,10 @@ export function StakingInfo({
                   <div className="space-y-3">
                     <div className="flex gap-2">
                       <Input
-                        type="number"
+                        type="text"
                         placeholder={`Amount to withdraw (${TOKEN_SYMBOL})`}
                         value={withdrawAmount}
-                        onChange={(e) => setWithdrawAmount(e.target.value)}
+                        onChange={(e) => setWithdrawAmount(formatInputWithCommas(e.target.value))}
                         className="bg-[#222222] border-[#333333] text-white flex-1"
                         disabled={isTransacting || !userInfo?.canRequestWithdraw}
                       />
@@ -718,7 +746,7 @@ export function StakingInfo({
                       rel="noopener noreferrer"
                       className="flex items-center hover:text-red-9"
                     >
-                      <span>{contractInfo.currentBlock}</span>
+                      <span>{withCommas(contractInfo.currentBlock || 0)}</span>
                       <ExternalLink className="w-3 h-3 ml-1" />
                     </a>
                   </p>
@@ -726,7 +754,7 @@ export function StakingInfo({
                 <div className="space-y-1">
                   <p className="text-[#999999]">Reward Per Block</p>
                   <p className="font-medium text-white">
-                    {contractInfo.rewardPerBlockFormatted} {TOKEN_SYMBOL}
+                    {withCommas(contractInfo.rewardPerBlockFormatted)} {TOKEN_SYMBOL}
                   </p>
                 </div>
               </div>
@@ -735,13 +763,13 @@ export function StakingInfo({
                 <div className="space-y-1">
                   <p className="text-[#999999]">Contract Balance</p>
                   <p className="font-medium text-white">
-                    {contractInfo.contractBalanceFormatted} {TOKEN_SYMBOL}
+                    {withCommas(contractInfo.contractBalanceFormatted)} {TOKEN_SYMBOL}
                   </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[#999999]">Reward Balance</p>
                   <p className="font-medium text-white">
-                    {contractInfo.rewardBalanceFormatted} {TOKEN_SYMBOL}
+                    {withCommas(contractInfo.rewardBalanceFormatted)} {TOKEN_SYMBOL}
                   </p>
                 </div>
               </div>
