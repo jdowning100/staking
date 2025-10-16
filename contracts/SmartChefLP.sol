@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
@@ -20,7 +21,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
  * - On cancelWithdraw, that snapshot is **voided** to prevent double counting.
  * - Rewards are paid in native token (e.g., ETH).
  */
-contract SmartChefLP is Ownable, ReentrancyGuard {
+contract SmartChefLP is Ownable, ReentrancyGuard, Pausable {
   using SafeERC20 for IERC20;
 
   // ---------------------------
@@ -97,6 +98,9 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   uint64 public  checkpointInterval = 60;   // ~5 minutes at 5s/block
   uint64 internal lastCheckpointBlock;
 
+  // Permanent freeze flag
+  bool private _permanentlyFrozen;
+
   // ---------------------------
   // Events
   // ---------------------------
@@ -113,6 +117,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   event ParameterChangeScheduled(bytes32 indexed paramHash, uint256 value, uint256 executeAfter);
   event ParameterChangeExecuted(bytes32 indexed paramHash, uint256 value);
   event ParameterChangeCancelled(bytes32 indexed paramHash);
+  event FrozenPermanently();
 
   // ---------------------------
   // Constructor
@@ -146,6 +151,20 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   }
 
   // ---------------------------
+  // Freeze Controls (Irreversible Pause)
+  // ---------------------------
+  function freezePermanently() external onlyOwner {
+    _pause();
+    _permanentlyFrozen = true;
+    emit FrozenPermanently();
+  }
+
+  function _unpause() internal override {
+    require(!_permanentlyFrozen, "Contract is permanently frozen");
+    super._unpause();
+  }
+
+  // ---------------------------
   // Internals: helpers
   // ---------------------------
 
@@ -173,7 +192,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
    * Deposit LP with a chosen lock duration (must be one of the allowed durations).
    * If already staked, duration must match the existing one.
    */
-  function deposit(uint256 _amount, uint256 _duration) external nonReentrant {
+  function deposit(uint256 _amount, uint256 _duration) external nonReentrant whenNotPaused {
     UserInfo storage user = userInfo[msg.sender];
     require(_amount > 0, "Zero deposit");
     require(user.withdrawRequestTime == 0, "In exit period");
@@ -221,7 +240,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
    * Request withdrawal — only after lock has ended. Removes the exiting slice from the
    * effective denominator immediately, and snapshots its still-delayed pipeline.
    */
-  function requestWithdraw(uint256 _amount) external nonReentrant {
+  function requestWithdraw(uint256 _amount) external nonReentrant whenNotPaused {
     UserInfo storage user = userInfo[msg.sender];
     require(_amount > 0 && user.amount >= _amount, "Bad amount");
     require(user.lockStartTime > 0, "No active stake");
@@ -265,7 +284,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
   /**
    * Execute withdrawal after exit period — transfers principal and clears the exit entry.
    */
-  function executeWithdraw() external nonReentrant {
+  function executeWithdraw() external nonReentrant whenNotPaused {
     // Auto-claim any matured rewards (unlocked snapshot and sliding-window portion)
     // so users receive vested rewards alongside principal withdrawal.
     _claimRewardsInternal(msg.sender, 0);
@@ -305,7 +324,7 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
    * Cancel withdrawal request — returns principal to active, restores effective,
    * and **voids the exit snapshot** to prevent double counting.
    */
-  function cancelWithdraw() external nonReentrant {
+  function cancelWithdraw() external nonReentrant whenNotPaused {
     UserInfo storage user = userInfo[msg.sender];
     require(user.withdrawRequestTime > 0, "No withdrawal requested");
 
@@ -329,15 +348,44 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
   }
 
+  /**
+   * Emergency withdrawal: Allows users to withdraw their principal (LP tokens) without rewards
+   * when the contract is paused. Does not claim rewards or respect locks/exits.
+   */
+  function emergencyWithdraw() external whenPaused {
+    UserInfo storage user = userInfo[msg.sender];
+    uint256 amt = user.amount + user.withdrawalAmount; // Include any in-exit amount
+    require(amt > 0, "No funds to withdraw");
+
+    // Reset user state
+    totalStaked -= user.amount;
+    totalActiveEffective -= user.effectiveAmount;
+    totalInExitPeriod -= user.withdrawalAmount;
+
+    user.amount = 0;
+    user.effectiveAmount = 0;
+    user.rewardDebt = 0;
+    user.debtClaimablePS = 0;
+    user.lockStartTime = 0;
+    user.lockDuration = 0;
+    user.withdrawRequestTime = 0;
+    user.withdrawalAmount = 0;
+    user.delayedReward = 0;
+    user.delayedUnlockBlock = 0;
+
+    lpToken.safeTransfer(msg.sender, amt);
+    emit WithdrawExecuted(msg.sender, amt); // Reuse event for logging
+  }
+
   // ---------------------------
   // Rewards
   // ---------------------------
 
-  function claimRewards() external nonReentrant {
+  function claimRewards() external nonReentrant whenNotPaused {
     _claimRewardsInternal(msg.sender, 0);
   }
 
-  function claimRewardsWithSlippage(uint256 minReward) external nonReentrant {
+  function claimRewardsWithSlippage(uint256 minReward) external nonReentrant whenNotPaused {
     _claimRewardsInternal(msg.sender, minReward);
   }
 
@@ -410,19 +458,24 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 adjusted = accTokenPerShare;
     if (block.number > lastRewardBlock) {
         uint256 mult = block.number - lastRewardBlock;
-        while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
-            uint256 safeMult = type(uint256).max / rewardPerBlock;
+        uint256 toAlloc = 0;
+        while (mult > 0 && rewardPerBlock > 0) {
+            uint256 safeMult = mult > (type(uint256).max / rewardPerBlock) ? (type(uint256).max / rewardPerBlock) : mult;
+            toAlloc += safeMult * rewardPerBlock;
             mult -= safeMult;
         }
-        uint256 toAlloc = mult * rewardPerBlock;
 
-        uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+        uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? totalAccruedRewards - totalClaimedRewards : 0;
         uint256 currentRewards = _rewardBalance();
         uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
         if (toAlloc > allocCap) toAlloc = allocCap;
 
         if (toAlloc > 0) {
-            adjusted += Math.mulDiv(toAlloc, PRECISION_FACTOR, activeEff);
+            uint256 prec = PRECISION_FACTOR;
+            while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
+                prec /= 10;
+            }
+            adjusted += Math.mulDiv(toAlloc, prec, activeEff);
         }
     }
 
@@ -531,6 +584,10 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     return available - block.timestamp;
   }
 
+  function isPermanentlyFrozen() external view returns (bool) {
+    return _permanentlyFrozen;
+  }
+
   // ---------------------------
   // Reward accounting + checkpoints
   // ---------------------------
@@ -545,26 +602,24 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     }
 
     uint256 mult = block.number - lastRewardBlock;
-    while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
-        uint256 safeMult = type(uint256).max / rewardPerBlock;
-        lastRewardBlock += safeMult;
+    uint256 toAlloc = 0;
+    while (mult > 0 && rewardPerBlock > 0) {
+        uint256 safeMult = mult > (type(uint256).max / rewardPerBlock) ? (type(uint256).max / rewardPerBlock) : mult;
+        toAlloc += safeMult * rewardPerBlock;
         mult -= safeMult;
-    }
-    uint256 toAlloc = mult * rewardPerBlock;
-
-    // Additional safe check for next multiplication
-    uint256 prec = PRECISION_FACTOR;
-    while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
-        prec /= 10;  // Reduce precision if needed (rare), but log or handle; alternatively, cap toAlloc
-        // Note: This is defensive; adjust if your PRECISION_FACTOR causes issues
+        lastRewardBlock += safeMult;
     }
 
-    uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+    uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? totalAccruedRewards - totalClaimedRewards : 0;
     uint256 currentRewards = _rewardBalance();
     uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
     if (toAlloc > allocCap) toAlloc = allocCap;
 
     if (toAlloc > 0) {
+        uint256 prec = PRECISION_FACTOR;
+        while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
+            prec /= 10;  // Reduce precision if needed to avoid overflow
+        }
         accTokenPerShare += Math.mulDiv(toAlloc, prec, activeEff);
         totalAccruedRewards += toAlloc;
     }
@@ -584,19 +639,24 @@ contract SmartChefLP is Ownable, ReentrancyGuard {
     uint256 mult = block.number - lastRewardBlock;
     if (mult == 0) return accTokenPerShare;
 
-    while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
-        uint256 safeMult = type(uint256).max / rewardPerBlock;
+    uint256 toAlloc = 0;
+    while (mult > 0 && rewardPerBlock > 0) {
+        uint256 safeMult = mult > (type(uint256).max / rewardPerBlock) ? (type(uint256).max / rewardPerBlock) : mult;
+        toAlloc += safeMult * rewardPerBlock;
         mult -= safeMult;
     }
 
-    uint256 toAlloc = mult * rewardPerBlock;
-    uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+    uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? totalAccruedRewards - totalClaimedRewards : 0;
     uint256 currentRewards = _rewardBalance();
     uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
     if (toAlloc > allocCap) toAlloc = allocCap;
     if (toAlloc == 0) return accTokenPerShare;
 
-    return accTokenPerShare + Math.mulDiv(toAlloc, PRECISION_FACTOR, activeEff);
+    uint256 prec = PRECISION_FACTOR;
+    while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
+        prec /= 10;
+    }
+    return accTokenPerShare + Math.mulDiv(toAlloc, prec, activeEff);
   }
 
   // Interpolated accPS at a past block (sliding-window)

@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 /**
  * Sliding-window vesting via accTokenPerShare checkpoints.
@@ -15,7 +16,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
  *   at request time into (delayedReward, delayedUnlockBlock) so users can still claim them
  *   after they unlock, even though their stake stopped earning further.
  */
-contract SmartChefNative is Ownable, ReentrancyGuard {
+contract SmartChefNative is Ownable, ReentrancyGuard, Pausable {
   // ---------------------------
   // User data
   // ---------------------------
@@ -86,6 +87,9 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   uint64 public  checkpointInterval = 60; // ~5 minutes at 5s/block (increased from 6)
   uint64 internal lastCheckpointBlock;
 
+  // Permanent freeze flag
+  bool private _permanentlyFrozen;
+
   // ---------------------------
   // Events
   // ---------------------------
@@ -102,6 +106,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   event ParameterChangeScheduled(bytes32 indexed paramHash, uint256 value, uint256 executeAfter);
   event ParameterChangeExecuted(bytes32 indexed paramHash, uint256 value);
   event ParameterChangeCancelled(bytes32 indexed paramHash);
+  event FrozenPermanently();
 
   constructor(
     uint256 _poolLimitPerUser,
@@ -129,6 +134,20 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   }
 
   // ---------------------------
+  // Freeze Controls (Irreversible Pause)
+  // ---------------------------
+  function freezePermanently() external onlyOwner {
+    _pause();
+    _permanentlyFrozen = true;
+    emit FrozenPermanently();
+  }
+
+  function _unpause() internal override {
+    require(!_permanentlyFrozen, "Contract is permanently frozen");
+    super._unpause();
+  }
+
+  // ---------------------------
   // Internals: helpers
   // ---------------------------
   function _getBoostMultiplier(uint256 _duration) internal pure returns (uint256) {
@@ -150,10 +169,15 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     return bal > totalStaked ? bal - totalStaked : 0;
   }
 
+  function _safeTransferNative(address _to, uint256 _amount) internal {
+    (bool success, ) = _to.call{ value: _amount, gas: 2300 }("");
+    require(success, "Native transfer failed");
+  }
+
   // ---------------------------
   // Core staking
   // ---------------------------
-  function deposit(uint256 _duration) external payable nonReentrant {
+  function deposit(uint256 _duration) external payable nonReentrant whenNotPaused {
     require(_duration == 10 minutes || _duration == 20 minutes, "Invalid duration");
     UserInfo storage user = userInfo[msg.sender];
     uint256 _amount = msg.value;
@@ -192,7 +216,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   }
 
   // Only allow withdrawal request when unlocked (NO EARLY EXITS)
-  function requestWithdraw(uint256 _amount) external nonReentrant {
+  function requestWithdraw(uint256 _amount) external nonReentrant whenNotPaused {
     UserInfo storage user = userInfo[msg.sender];
     require(_amount > 0 && user.amount >= _amount, "Bad amount");
     require(user.lockStartBlock > 0, "No stake");
@@ -232,8 +256,9 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     emit WithdrawRequested(msg.sender, _amount, availableTime);
   }
 
-  function executeWithdraw() external nonReentrant {
-    _updatePool();
+  function executeWithdraw() external nonReentrant whenNotPaused {
+    // Auto-claim any matured rewards (unlocked snapshot and sliding-window portion)
+    // so users receive vested rewards alongside principal withdrawal.
     _claimRewardsInternal(msg.sender, 0);
     UserInfo storage user = userInfo[msg.sender];
     require(user.withdrawRequestBlock > 0, "No request");
@@ -266,7 +291,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     emit WithdrawExecuted(msg.sender, amt);
   }
 
-  function cancelWithdraw() external nonReentrant {
+  function cancelWithdraw() external nonReentrant whenNotPaused {
     UserInfo storage user = userInfo[msg.sender];
     require(user.withdrawRequestBlock > 0, "No request");
 
@@ -287,14 +312,44 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     user.rewardDebt = Math.mulDiv(user.effectiveAmount, accTokenPerShare, PRECISION_FACTOR);
   }
 
+  /**
+   * Emergency withdrawal: Allows users to withdraw their principal (native tokens) without rewards
+   * when the contract is paused. Does not claim rewards or respect locks/exits.
+   */
+  function emergencyWithdraw() external whenPaused {
+    UserInfo storage user = userInfo[msg.sender];
+    uint256 amt = user.amount + user.withdrawalAmount; // Include any in-exit amount
+    require(amt > 0, "No funds to withdraw");
+
+    // Reset user state
+    totalStaked -= user.amount;
+    totalActiveEffective -= user.effectiveAmount;
+    totalInExitPeriod -= user.withdrawalAmount;
+
+    user.amount = 0;
+    user.effectiveAmount = 0;
+    user.rewardDebt = 0;
+    user.debtClaimablePS = 0;
+    user.lockStartBlock = 0;
+    user.lockDuration = 0;
+    user.lockDurationBlocks = 0;
+    user.withdrawRequestBlock = 0;
+    user.withdrawalAmount = 0;
+    user.delayedReward = 0;
+    user.delayedUnlockBlock = 0;
+
+    _safeTransferNative(msg.sender, amt);
+    emit WithdrawExecuted(msg.sender, amt); // Reuse event for logging
+  }
+
   // ---------------------------
   // Rewards
   // ---------------------------
-  function claimRewards() external nonReentrant {
+  function claimRewards() external nonReentrant whenNotPaused {
     _claimRewardsInternal(msg.sender, 0);
   }
 
-  function claimRewardsWithSlippage(uint256 minReward) external nonReentrant {
+  function claimRewardsWithSlippage(uint256 minReward) external nonReentrant whenNotPaused {
     _claimRewardsInternal(msg.sender, minReward);
   }
 
@@ -369,19 +424,24 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     uint256 adjusted = accTokenPerShare;
     if (block.number > lastRewardBlock) {
       uint256 mult = block.number - lastRewardBlock;
-      while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
-          uint256 safeMult = type(uint256).max / rewardPerBlock;
+      uint256 toAlloc = 0;
+      while (mult > 0 && rewardPerBlock > 0) {
+          uint256 safeMult = mult > (type(uint256).max / rewardPerBlock) ? (type(uint256).max / rewardPerBlock) : mult;
+          toAlloc += safeMult * rewardPerBlock;
           mult -= safeMult;
       }
-      uint256 toAlloc = mult * rewardPerBlock;
 
-      uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+      uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? totalAccruedRewards - totalClaimedRewards : 0;
       uint256 currentRewards = _rewardBalance();
       uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
       if (toAlloc > allocCap) toAlloc = allocCap;
 
       if (toAlloc > 0) {
-        adjusted += (toAlloc * PRECISION_FACTOR) / active;
+        uint256 prec = PRECISION_FACTOR;
+        while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
+            prec /= 10;
+        }
+        adjusted += Math.mulDiv(toAlloc, prec, active);
       }
     }
 
@@ -540,6 +600,10 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     return Math.mulDiv(annualRewards, 10000, activePrincipal);
   }
 
+  function isPermanentlyFrozen() external view returns (bool) {
+    return _permanentlyFrozen;
+  }
+
   // ---------------------------
   // Reward accounting + checkpoints
   // ---------------------------
@@ -553,27 +617,25 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     }
 
     uint256 mult = block.number - lastRewardBlock;
-    while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
-        uint256 safeMult = type(uint256).max / rewardPerBlock;
-        lastRewardBlock += safeMult;
+    uint256 toAlloc = 0;
+    while (mult > 0 && rewardPerBlock > 0) {
+        uint256 safeMult = mult > (type(uint256).max / rewardPerBlock) ? (type(uint256).max / rewardPerBlock) : mult;
+        toAlloc += safeMult * rewardPerBlock;
         mult -= safeMult;
-    }
-    uint256 toAlloc = mult * rewardPerBlock;
-
-    // Additional safe check for next multiplication
-    uint256 prec = PRECISION_FACTOR;
-    while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
-        prec /= 10;  // Reduce precision if needed (rare), but log or handle; alternatively, cap toAlloc
-        // Note: This is defensive; adjust if your PRECISION_FACTOR causes issues
+        lastRewardBlock += safeMult;
     }
 
-    uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+    uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? totalAccruedRewards - totalClaimedRewards : 0;
     uint256 currentRewards = _rewardBalance();
     uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
     if (toAlloc > allocCap) toAlloc = allocCap;
 
     if (toAlloc > 0) {
-        accTokenPerShare += (toAlloc * prec) / active;
+        uint256 prec = PRECISION_FACTOR;
+        while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
+            prec /= 10;  // Reduce precision if needed to avoid overflow
+        }
+        accTokenPerShare += Math.mulDiv(toAlloc, prec, active);
         totalAccruedRewards += toAlloc;
     }
     lastRewardBlock = block.number;
@@ -592,19 +654,24 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     uint256 mult = block.number - lastRewardBlock;
     if (mult == 0) return accTokenPerShare;
 
-    while (rewardPerBlock > 0 && mult > type(uint256).max / rewardPerBlock) {
-        uint256 safeMult = type(uint256).max / rewardPerBlock;
+    uint256 toAlloc = 0;
+    while (mult > 0 && rewardPerBlock > 0) {
+        uint256 safeMult = mult > (type(uint256).max / rewardPerBlock) ? (type(uint256).max / rewardPerBlock) : mult;
+        toAlloc += safeMult * rewardPerBlock;
         mult -= safeMult;
     }
 
-    uint256 toAlloc = mult * rewardPerBlock;
-    uint256 undistributed = totalAccruedRewards - totalClaimedRewards;
+    uint256 undistributed = totalAccruedRewards > totalClaimedRewards ? totalAccruedRewards - totalClaimedRewards : 0;
     uint256 currentRewards = _rewardBalance();
     uint256 allocCap = currentRewards > undistributed ? currentRewards - undistributed : 0;
     if (toAlloc > allocCap) toAlloc = allocCap;
     if (toAlloc == 0) return accTokenPerShare;
 
-    return accTokenPerShare + (toAlloc * PRECISION_FACTOR) / active;
+    uint256 prec = PRECISION_FACTOR;
+    while (toAlloc > 0 && prec > 0 && toAlloc > type(uint256).max / prec) {
+        prec /= 10;
+    }
+    return accTokenPerShare + Math.mulDiv(toAlloc, prec, active);
   }
 
   // Interpolated accPS at a past block (for sliding-window vesting)
@@ -801,11 +868,14 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   // ---------------------------
   function updatePool() external { _updatePool(); }
 
-  function _safeTransferNative(address _to, uint256 _amount) internal {
-    (bool success, ) = _to.call{ value: _amount, gas: 2300 }("");
-    require(success, "Native transfer failed");
+  receive() external payable {
+    if (msg.value > 0) {
+      emit RewardsFunded(msg.value);
+    }
   }
-
-  receive() external payable {}
-  fallback() external payable {}
+  fallback() external payable {
+    if (msg.value > 0) {
+      emit RewardsFunded(msg.value);
+    }
+  }
 }
