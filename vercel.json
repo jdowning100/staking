@@ -1,0 +1,4 @@
+{
+  "installCommand": "yarn install --ignore-engines",
+  "buildCommand": "yarn build"
+}

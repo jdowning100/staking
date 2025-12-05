@@ -1,21 +1,15 @@
 import '@/public/styles/globals.css';
 
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
 import { Analytics } from '@vercel/analytics/react';
 import localFont from 'next/font/local';
-import { Suspense } from 'react';
 import Providers from '@/lib/context/providers';
 import { Toaster } from '@/components/ui/toaster';
 import { Inter } from 'next/font/google';
 import { StateProvider } from '../store';
 import { APP_TITLE, APP_DESCRIPTION } from '@/lib/config';
-
-const Header = dynamic(() => import('@/components/common/header'), {
-  ssr: false,
-  suspense: true,
-});
+import Header from '@/components/common/header';
 
 const satoshiFont = localFont({
   src: [
@@ -41,6 +35,11 @@ export const metadata: Metadata = {
   title: APP_TITLE,
   description: APP_DESCRIPTION,
   metadataBase: new URL('https://nft.qu.ai'),
+  icons: {
+    icon: '/images/quai-logo.png',
+    shortcut: '/images/quai-logo.png',
+    apple: '/images/quai-logo.png',
+  },
   openGraph: {
     images: '/opengraph-image.png',
   },
@@ -63,9 +62,7 @@ export default function RootLayout({
       >
         <StateProvider>
           <Providers>
-            <Suspense fallback={<div></div>}>
-              <Header />
-            </Suspense>
+            <Header />
             <div className="relative">{children}</div>
             <Toaster />
             <Analytics />
