@@ -7,14 +7,14 @@ import '@openzeppelin/contracts/utils/ReentrancyGuard.sol';
 contract SmartChefNative is Ownable, ReentrancyGuard {
   // Info of each user
   struct UserInfo {
-    uint256 amount; // Staked native tokens
-    uint256 rewardDebt; // Reward debt
-    uint256 lockStartTime; // When the lock period began
+    uint256 amount; // Active staked native tokens (accruing rewards)
+    uint256 rewardDebt; // Reward debt for active stakes
+    uint256 pendingWithdrawal; // Principal locked for withdrawal (not accruing rewards)
+    uint256 withdrawalRequestTime; // When withdrawal was requested (0 if none pending)
   }
 
-  // Lockup and withdrawal settings
-  uint256 public constant LOCK_PERIOD = 30 days;
-  uint256 public constant GRACE_PERIOD = 24 hours;
+  // Withdrawal lock period (default 30 days after requesting withdrawal)
+  uint256 public withdrawalLockPeriod = 30 days;
 
   // Whether a limit is set for users
   bool public hasUserLimit;
@@ -30,22 +30,25 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   uint256 public rewardPerBlock;
   // Precision factor for reward calculations
   uint256 public PRECISION_FACTOR;
-  // Total amount staked
+  // Total amount actively staked (accruing rewards)
   uint256 public totalStaked;
+  // Total amount pending withdrawal (not accruing rewards)
+  uint256 public totalPendingWithdrawals;
   // Block time in seconds (configurable)
   uint256 public blockTime = 5;
   // Info of each user that stakes tokens
   mapping(address => UserInfo) public userInfo;
 
   event Deposit(address indexed user, uint256 amount);
-  event Withdraw(address indexed user, uint256 amount);
-  event EmergencyWithdraw(address indexed user, uint256 amount);
+  event WithdrawalRequested(address indexed user, uint256 amount);
+  event WithdrawalCompleted(address indexed user, uint256 amount);
   event RewardClaimed(address indexed user, uint256 amount);
   event NewRewardPerBlock(uint256 rewardPerBlock);
   event NewPoolLimit(uint256 poolLimitPerUser);
   event AdminTokenRecovery(address tokenRecovered, uint256 amount);
   event RewardsFunded(uint256 amount);
   event BlockTimeUpdated(uint256 oldBlockTime, uint256 newBlockTime);
+  event WithdrawalLockPeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
 
   constructor(uint256 _rewardPerBlock, uint256 _startBlock, uint256 _poolLimitPerUser) Ownable(msg.sender) {
     rewardPerBlock = _rewardPerBlock;
@@ -60,6 +63,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
   }
 
   // Deposit native tokens and collect rewards
+  // User can deposit at any time, even if they have a pending withdrawal
   function deposit() external payable nonReentrant {
     UserInfo storage user = userInfo[msg.sender];
     uint256 _amount = msg.value;
@@ -71,14 +75,15 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
 
     _updatePool();
 
+    // Auto-claim any pending rewards
     if (user.amount > 0) {
       uint256 pending = (user.amount * accTokenPerShare) / PRECISION_FACTOR - user.rewardDebt;
       if (pending > 0) {
         // Check solvency: ensure we don't use the new deposit (msg.value) to pay old rewards
-        // Available rewards = (balance before deposit) - totalStaked
+        // Available rewards = (balance before deposit) - totalStaked - totalPendingWithdrawals
         uint256 balanceBeforeDeposit = address(this).balance - msg.value;
-        require(balanceBeforeDeposit >= totalStaked, 'Contract invariant violated');
-        uint256 rewardBalance = balanceBeforeDeposit - totalStaked;
+        require(balanceBeforeDeposit >= totalStaked + totalPendingWithdrawals, 'Contract invariant violated');
+        uint256 rewardBalance = balanceBeforeDeposit - totalStaked - totalPendingWithdrawals;
         require(pending <= rewardBalance, 'Insufficient reward balance');
         _safeTransferNative(msg.sender, pending);
         emit RewardClaimed(msg.sender, pending);
@@ -87,53 +92,62 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
 
     user.amount = user.amount + _amount;
     totalStaked = totalStaked + _amount;
-    user.lockStartTime = block.timestamp; // Reset lock on deposit/top-up
 
     user.rewardDebt = (user.amount * accTokenPerShare) / PRECISION_FACTOR;
     emit Deposit(msg.sender, _amount);
   }
 
-  // Withdraw staked tokens and collect rewards
-  function withdraw(uint256 _amount) external nonReentrant {
+  // Request withdrawal of staked tokens
+  // This moves principal from active staking to pending withdrawal
+  // Principal stops accruing rewards and starts a 30-day lock period
+  function requestWithdrawal(uint256 _amount) external nonReentrant {
     UserInfo storage user = userInfo[msg.sender];
+    require(_amount > 0, 'Amount must be greater than 0');
     require(user.amount >= _amount, 'Amount to withdraw too high');
-    require(user.lockStartTime > 0, 'No active stake');
-
-    // Calculate which lock cycle we're in and if we're in a grace period
-    uint256 timeSinceStart = block.timestamp - user.lockStartTime;
-    uint256 fullCycleLength = LOCK_PERIOD + GRACE_PERIOD;
-    uint256 timeInCurrentCycle = timeSinceStart % fullCycleLength;
-
-    // Check if we're in a grace period of any cycle
-    bool inGracePeriod = timeInCurrentCycle >= LOCK_PERIOD;
-
-    require(inGracePeriod, 'Still locked - not in grace period');
+    require(user.pendingWithdrawal == 0, 'Already have pending withdrawal');
 
     _updatePool();
+
+    // Claim any pending rewards before moving principal
     uint256 pending = (user.amount * accTokenPerShare) / PRECISION_FACTOR - user.rewardDebt;
     if (pending > 0) {
-      // Check solvency: ensure we don't dip into staked funds
-      // Must check against current balance minus ALL staked funds (not adjusting for withdrawal)
-      uint256 rewardBalance = address(this).balance - totalStaked;
+      uint256 rewardBalance = address(this).balance - totalStaked - totalPendingWithdrawals;
       require(pending <= rewardBalance, 'Insufficient reward balance');
       _safeTransferNative(msg.sender, pending);
       emit RewardClaimed(msg.sender, pending);
     }
 
-    if (_amount > 0) {
-      user.amount = user.amount - _amount;
-      totalStaked = totalStaked - _amount;
-      _safeTransferNative(msg.sender, _amount);
+    // Move principal from active staking to pending withdrawal
+    user.amount = user.amount - _amount;
+    totalStaked = totalStaked - _amount;
 
-      // If user withdraws everything, reset lock time
-      if (user.amount == 0) {
-        user.lockStartTime = 0;
-      }
-      // Otherwise, lock timing continues unchanged from original deposit
-    }
+    user.pendingWithdrawal = _amount;
+    totalPendingWithdrawals = totalPendingWithdrawals + _amount;
+    user.withdrawalRequestTime = block.timestamp;
 
+    // Update reward debt for remaining active stake
     user.rewardDebt = (user.amount * accTokenPerShare) / PRECISION_FACTOR;
-    emit Withdraw(msg.sender, _amount);
+
+    emit WithdrawalRequested(msg.sender, _amount);
+  }
+
+  // Complete withdrawal after the 30-day lock period
+  function completeWithdrawal() external nonReentrant {
+    UserInfo storage user = userInfo[msg.sender];
+    require(user.pendingWithdrawal > 0, 'No pending withdrawal');
+    require(block.timestamp >= user.withdrawalRequestTime + withdrawalLockPeriod, 'Withdrawal still locked');
+
+    uint256 amountToWithdraw = user.pendingWithdrawal;
+
+    // Reset pending withdrawal state
+    user.pendingWithdrawal = 0;
+    user.withdrawalRequestTime = 0;
+    totalPendingWithdrawals = totalPendingWithdrawals - amountToWithdraw;
+
+    // Transfer the principal
+    _safeTransferNative(msg.sender, amountToWithdraw);
+
+    emit WithdrawalCompleted(msg.sender, amountToWithdraw);
   }
 
   // Claim rewards without withdrawing stake
@@ -142,28 +156,13 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     _updatePool();
     uint256 pending = (user.amount * accTokenPerShare) / PRECISION_FACTOR - user.rewardDebt;
     if (pending > 0) {
-      // Check solvency: ensure we don't dip into staked funds
-      uint256 rewardBalance = address(this).balance - totalStaked;
+      // Check solvency: ensure we don't dip into staked or pending withdrawal funds
+      uint256 rewardBalance = address(this).balance - totalStaked - totalPendingWithdrawals;
       require(pending <= rewardBalance, 'Insufficient reward balance');
       _safeTransferNative(msg.sender, pending);
       emit RewardClaimed(msg.sender, pending);
     }
     user.rewardDebt = (user.amount * accTokenPerShare) / PRECISION_FACTOR;
-  }
-
-  // Withdraw staked tokens without rewards (emergency)
-  function emergencyWithdraw() external nonReentrant {
-    UserInfo storage user = userInfo[msg.sender];
-    require(block.timestamp >= user.lockStartTime + LOCK_PERIOD, 'Still locked');
-    uint256 amountToTransfer = user.amount;
-    totalStaked = totalStaked - amountToTransfer;
-    user.amount = 0;
-    user.rewardDebt = 0;
-    user.lockStartTime = 0;
-    if (amountToTransfer > 0) {
-      _safeTransferNative(msg.sender, amountToTransfer);
-    }
-    emit EmergencyWithdraw(msg.sender, amountToTransfer);
   }
 
   // Recover wrong tokens sent to the contract (not native tokens)
@@ -178,7 +177,7 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
 
   // Update reward per block (APY is in basis points, e.g., 1000 = 10%)
   function updateRewardPerBlock(uint256 _newAPYBasisPoints) external onlyOwner {
-    require(_newAPYBasisPoints <= 10000, 'APY too high'); // Max 100%
+    require(_newAPYBasisPoints <= 1000000, 'APY too high'); // Max 10,000%
     _updatePool(); // Lock in past rewards before changing rate
 
     // Calculate reward per block based on APY
@@ -214,6 +213,13 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     emit BlockTimeUpdated(oldBlockTime, _newBlockTime);
   }
 
+  // Update withdrawal lock period
+  function updateWithdrawalLockPeriod(uint256 _newPeriod) external onlyOwner {
+    uint256 oldPeriod = withdrawalLockPeriod;
+    withdrawalLockPeriod = _newPeriod;
+    emit WithdrawalLockPeriodUpdated(oldPeriod, _newPeriod);
+  }
+
   // Update pool limit per user
   function updatePoolLimitPerUser(bool _hasUserLimit, uint256 _poolLimitPerUser) external onlyOwner {
     if (_hasUserLimit) {
@@ -235,9 +241,9 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
 
   // Withdraw excess rewards (emergency)
   function emergencyRewardWithdraw(uint256 _amount) external onlyOwner {
-    // Ensure we don't withdraw user stakes
-    uint256 rewardBalance = address(this).balance - totalStaked;
-    require(_amount <= rewardBalance, 'Cannot withdraw user stakes');
+    // Ensure we don't withdraw user stakes or pending withdrawals
+    uint256 rewardBalance = address(this).balance - totalStaked - totalPendingWithdrawals;
+    require(_amount <= rewardBalance, 'Cannot withdraw user funds');
     _safeTransferNative(msg.sender, _amount);
   }
 
@@ -279,116 +285,62 @@ contract SmartChefNative is Ownable, ReentrancyGuard {
     require(success, 'Native token transfer failed');
   }
 
-  // View function to check if user is in lock period
-  function isLocked(address _user) external view returns (bool) {
-    UserInfo storage user = userInfo[_user];
-    if (user.lockStartTime == 0) return false;
-
-    uint256 timeSinceStart = block.timestamp - user.lockStartTime;
-    uint256 fullCycleLength = LOCK_PERIOD + GRACE_PERIOD;
-    uint256 timeInCurrentCycle = timeSinceStart % fullCycleLength;
-
-    return timeInCurrentCycle < LOCK_PERIOD;
+  // View function to check if user has a pending withdrawal
+  function hasPendingWithdrawal(address _user) external view returns (bool) {
+    return userInfo[_user].pendingWithdrawal > 0;
   }
 
-  // View function to check if user is in grace period
-  function isInGracePeriod(address _user) external view returns (bool) {
+  // View function to check if user can complete their withdrawal
+  function canCompleteWithdrawal(address _user) external view returns (bool) {
     UserInfo storage user = userInfo[_user];
-    if (user.lockStartTime == 0) return false;
-
-    uint256 timeSinceStart = block.timestamp - user.lockStartTime;
-    uint256 fullCycleLength = LOCK_PERIOD + GRACE_PERIOD;
-    uint256 timeInCurrentCycle = timeSinceStart % fullCycleLength;
-
-    return timeInCurrentCycle >= LOCK_PERIOD;
+    if (user.pendingWithdrawal == 0) return false;
+    return block.timestamp >= user.withdrawalRequestTime + withdrawalLockPeriod;
   }
 
-  // View function to get lock details
-  function getLockInfo(
+  // View function to get time until withdrawal can be completed
+  function timeUntilWithdrawal(address _user) external view returns (uint256) {
+    UserInfo storage user = userInfo[_user];
+    if (user.pendingWithdrawal == 0) return 0;
+
+    uint256 unlockTime = user.withdrawalRequestTime + withdrawalLockPeriod;
+    if (block.timestamp >= unlockTime) return 0;
+
+    return unlockTime - block.timestamp;
+  }
+
+  // View function to get withdrawal details for a user
+  function getWithdrawalInfo(
     address _user
   )
     external
     view
     returns (
-      uint256 lockStartTime,
-      uint256 currentCycle,
-      uint256 currentLockEnd,
-      uint256 currentGracePeriodEnd,
-      bool canWithdraw,
-      bool inGracePeriod
+      uint256 activeStake,
+      uint256 pendingWithdrawalAmount,
+      uint256 withdrawalRequestTime,
+      uint256 withdrawalUnlockTime,
+      bool canComplete
     )
   {
     UserInfo storage user = userInfo[_user];
-    lockStartTime = user.lockStartTime;
+    activeStake = user.amount;
+    pendingWithdrawalAmount = user.pendingWithdrawal;
+    withdrawalRequestTime = user.withdrawalRequestTime;
 
-    if (lockStartTime > 0) {
-      uint256 timeSinceStart = block.timestamp - lockStartTime;
-      uint256 fullCycleLength = LOCK_PERIOD + GRACE_PERIOD;
-      currentCycle = timeSinceStart / fullCycleLength;
-      uint256 timeInCurrentCycle = timeSinceStart % fullCycleLength;
-
-      // Calculate current cycle boundaries
-      uint256 currentCycleStart = lockStartTime + (currentCycle * fullCycleLength);
-      currentLockEnd = currentCycleStart + LOCK_PERIOD;
-      currentGracePeriodEnd = currentCycleStart + fullCycleLength;
-
-      inGracePeriod = timeInCurrentCycle >= LOCK_PERIOD;
-      canWithdraw = inGracePeriod;
+    if (user.pendingWithdrawal > 0) {
+      withdrawalUnlockTime = user.withdrawalRequestTime + withdrawalLockPeriod;
+      canComplete = block.timestamp >= withdrawalUnlockTime;
     } else {
-      currentCycle = 0;
-      currentLockEnd = 0;
-      currentGracePeriodEnd = 0;
-      canWithdraw = false;
-      inGracePeriod = false;
+      withdrawalUnlockTime = 0;
+      canComplete = false;
     }
   }
 
-  // View function to get time until next unlock
-  function timeUntilUnlock(address _user) external view returns (uint256) {
-    UserInfo storage user = userInfo[_user];
-    if (user.lockStartTime == 0) return 0;
-
-    uint256 timeSinceStart = block.timestamp - user.lockStartTime;
-    uint256 fullCycleLength = LOCK_PERIOD + GRACE_PERIOD;
-    uint256 timeInCurrentCycle = timeSinceStart % fullCycleLength;
-
-    // If already in grace period, can withdraw now
-    if (timeInCurrentCycle >= LOCK_PERIOD) return 0;
-
-    // Otherwise return time until grace period starts
-    return LOCK_PERIOD - timeInCurrentCycle;
-  }
-
-  // View function to get time left in current grace period
-  function timeLeftInGracePeriod(address _user) external view returns (uint256) {
-    UserInfo storage user = userInfo[_user];
-    if (user.lockStartTime == 0) return 0;
-
-    uint256 timeSinceStart = block.timestamp - user.lockStartTime;
-    uint256 fullCycleLength = LOCK_PERIOD + GRACE_PERIOD;
-    uint256 timeInCurrentCycle = timeSinceStart % fullCycleLength;
-
-    // If not in grace period, return 0
-    if (timeInCurrentCycle < LOCK_PERIOD) return 0;
-
-    // Return time until grace period ends (start of next cycle)
-    return fullCycleLength - timeInCurrentCycle;
-  }
-
-  // View function to get current lock cycle number
-  function getCurrentCycle(address _user) external view returns (uint256) {
-    UserInfo storage user = userInfo[_user];
-    if (user.lockStartTime == 0) return 0;
-
-    uint256 timeSinceStart = block.timestamp - user.lockStartTime;
-    uint256 fullCycleLength = LOCK_PERIOD + GRACE_PERIOD;
-    return timeSinceStart / fullCycleLength;
-  }
-
-  // View function to get contract balance (excluding user stakes)
+  // View function to get contract balance (excluding user stakes and pending withdrawals)
   function getRewardBalance() external view returns (uint256) {
-    if (address(this).balance > totalStaked) {
-      return address(this).balance - totalStaked;
+    uint256 userFunds = totalStaked + totalPendingWithdrawals;
+    if (address(this).balance > userFunds) {
+      return address(this).balance - userFunds;
     }
     return 0;
   }

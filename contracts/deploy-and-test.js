@@ -145,8 +145,7 @@ async function deploySmartChefNative() {
         const userInfo = await smartChefNative.userInfo(wallet.address)
         if (userInfo.amount === TEST_CONFIG.TEST_DEPOSIT_AMOUNT) {
             logSuccess(`Deposited ${quais.formatQuai(TEST_CONFIG.TEST_DEPOSIT_AMOUNT)} QUAI`)
-            logInfo(`User stake: ${quais.formatQuai(userInfo.amount)} QUAI`)
-            logInfo(`Lock start time: ${new Date(Number(userInfo.lockStartTime) * 1000).toLocaleString()}`)
+            logInfo(`User active stake: ${quais.formatQuai(userInfo.amount)} QUAI`)
             testsPassed++
         } else {
             throw new Error(`Deposit amount mismatch`)
@@ -156,45 +155,24 @@ async function deploySmartChefNative() {
         testsFailed++
     }
 
-    // Test 3: Check lock status
-    logTest('Test 3: Checking lock status')
+    // Test 3: Check no pending withdrawal initially
+    logTest('Test 3: Checking no pending withdrawal initially')
     try {
-        const isLocked = await smartChefNative.isLocked(wallet.address)
-        const timeUntilUnlock = await smartChefNative.timeUntilUnlock(wallet.address)
+        const hasPending = await smartChefNative.hasPendingWithdrawal(wallet.address)
 
-        if (isLocked) {
-            logSuccess('User is locked as expected')
-            logInfo(`Time until unlock: ${Number(timeUntilUnlock) / 86400} days`)
+        if (!hasPending) {
+            logSuccess('No pending withdrawal as expected')
             testsPassed++
         } else {
-            throw new Error('User should be locked after deposit')
+            throw new Error('Should not have pending withdrawal after deposit')
         }
     } catch (error) {
-        logError(`Lock check failed: ${error.message}`)
+        logError(`Pending withdrawal check failed: ${error.message}`)
         testsFailed++
     }
 
-    // Test 4: Attempt withdrawal during lock period (should fail)
-    logTest('Test 4: Attempting withdrawal during lock period (should fail)')
-    try {
-        await smartChefNative.withdraw(TEST_CONFIG.TEST_DEPOSIT_AMOUNT, { gasLimit: 500000 })
-        logError('Withdrawal succeeded when it should have failed')
-        testsFailed++
-    } catch (error) {
-        if (error.message.includes('Still locked') ||
-            error.message.includes('not in grace period') ||
-            error.message.includes('Access list creation failed') ||
-            error.message.includes('execution reverted')) {
-            logSuccess('Withdrawal correctly blocked during lock period')
-            testsPassed++
-        } else {
-            logError(`Unexpected error: ${error.message}`)
-            testsFailed++
-        }
-    }
-
-    // Test 5: Check pending rewards
-    logTest('Test 5: Checking pending rewards')
+    // Test 4: Check pending rewards
+    logTest('Test 4: Checking pending rewards')
     try {
         // Wait a bit for blocks to be mined naturally
         logInfo('Waiting for natural block progression...')
@@ -215,8 +193,8 @@ async function deploySmartChefNative() {
         testsFailed++
     }
 
-    // Test 6: Claim rewards
-    logTest('Test 6: Claiming rewards without withdrawing')
+    // Test 5: Claim rewards (should work anytime)
+    logTest('Test 5: Claiming rewards without withdrawing')
     try {
         const pendingBefore = await smartChefNative.pendingReward(wallet.address)
 
@@ -242,17 +220,15 @@ async function deploySmartChefNative() {
         testsFailed++
     }
 
-    // Test 7: Top-up deposit (should reset lock)
-    logTest('Test 7: Adding to position (should reset lock)')
+    // Test 6: Top-up deposit (can deposit anytime, even with pending withdrawal later)
+    logTest('Test 6: Adding to position')
     try {
-        // Check reward balance before top-up
         const rewardBalanceBefore = await smartChefNative.getRewardBalance()
         const pendingRewards = await smartChefNative.pendingReward(wallet.address)
         logInfo(`Reward balance before top-up: ${quais.formatQuai(rewardBalanceBefore)} QUAI`)
         logInfo(`Pending rewards: ${quais.formatQuai(pendingRewards)} QUAI`)
 
-        const lockTimeBefore = (await smartChefNative.userInfo(wallet.address)).lockStartTime
-        await sleep(2000) // Wait 2 seconds
+        const userInfoBefore = await smartChefNative.userInfo(wallet.address)
 
         const topUpTx = await smartChefNative.deposit({
             value: TEST_CONFIG.SMALL_DEPOSIT,
@@ -260,15 +236,15 @@ async function deploySmartChefNative() {
         })
         await topUpTx.wait()
 
-        const userInfo = await smartChefNative.userInfo(wallet.address)
-        const lockTimeAfter = userInfo.lockStartTime
+        const userInfoAfter = await smartChefNative.userInfo(wallet.address)
+        const expectedAmount = userInfoBefore.amount + TEST_CONFIG.SMALL_DEPOSIT
 
-        if (lockTimeAfter > lockTimeBefore) {
-            logSuccess('Lock period reset after additional deposit')
-            logInfo(`Total staked: ${quais.formatQuai(userInfo.amount)} QUAI`)
+        if (userInfoAfter.amount === expectedAmount) {
+            logSuccess('Additional deposit successful')
+            logInfo(`Total staked: ${quais.formatQuai(userInfoAfter.amount)} QUAI`)
             testsPassed++
         } else {
-            throw new Error('Lock time should have been reset')
+            throw new Error('Deposit amount mismatch after top-up')
         }
     } catch (error) {
         if (error.message.includes('Insufficient reward balance')) {
@@ -281,10 +257,155 @@ async function deploySmartChefNative() {
         }
     }
 
-    // Test 8: Update reward rate (admin function)
-    logTest('Test 8: Updating APY (admin function)')
+    // Test 7: Request withdrawal
+    logTest('Test 7: Requesting withdrawal')
     try {
-        const newAPY = 500 // 5% APY in basis points (reduced from 20%)
+        const userInfoBefore = await smartChefNative.userInfo(wallet.address)
+        const withdrawAmount = userInfoBefore.amount / 2n // Withdraw half
+
+        const requestTx = await smartChefNative.requestWithdrawal(withdrawAmount, { gasLimit: 500000 })
+        await requestTx.wait()
+
+        const userInfoAfter = await smartChefNative.userInfo(wallet.address)
+        const hasPending = await smartChefNative.hasPendingWithdrawal(wallet.address)
+        const withdrawalInfo = await smartChefNative.getWithdrawalInfo(wallet.address)
+
+        if (hasPending && withdrawalInfo.pendingWithdrawalAmount === withdrawAmount) {
+            logSuccess(`Withdrawal requested for ${quais.formatQuai(withdrawAmount)} QUAI`)
+            logInfo(`Active stake remaining: ${quais.formatQuai(userInfoAfter.amount)} QUAI`)
+            logInfo(`Pending withdrawal: ${quais.formatQuai(withdrawalInfo.pendingWithdrawalAmount)} QUAI`)
+            logInfo(`Unlock time: ${new Date(Number(withdrawalInfo.withdrawalUnlockTime) * 1000).toLocaleString()}`)
+            testsPassed++
+        } else {
+            throw new Error('Withdrawal request not recorded correctly')
+        }
+    } catch (error) {
+        logError(`Request withdrawal failed: ${error.message}`)
+        testsFailed++
+    }
+
+    // Test 8: Attempt to complete withdrawal before lock period (should fail)
+    logTest('Test 8: Attempting to complete withdrawal before lock period (should fail)')
+    try {
+        await smartChefNative.completeWithdrawal({ gasLimit: 500000 })
+        logError('Complete withdrawal succeeded when it should have failed')
+        testsFailed++
+    } catch (error) {
+        if (error.message.includes('Withdrawal still locked') ||
+            error.message.includes('Access list creation failed') ||
+            error.message.includes('execution reverted')) {
+            logSuccess('Complete withdrawal correctly blocked during lock period')
+            testsPassed++
+        } else {
+            logError(`Unexpected error: ${error.message}`)
+            testsFailed++
+        }
+    }
+
+    // Test 9: Attempt second withdrawal request (should fail - already have pending)
+    logTest('Test 9: Attempting second withdrawal request (should fail)')
+    try {
+        const userInfo = await smartChefNative.userInfo(wallet.address)
+        if (userInfo.amount > 0n) {
+            await smartChefNative.requestWithdrawal(userInfo.amount, { gasLimit: 500000 })
+            logError('Second withdrawal request succeeded when it should have failed')
+            testsFailed++
+        } else {
+            logInfo('No remaining stake to test with')
+            testsPassed++
+        }
+    } catch (error) {
+        if (error.message.includes('Already have pending withdrawal') ||
+            error.message.includes('Access list creation failed') ||
+            error.message.includes('execution reverted')) {
+            logSuccess('Second withdrawal request correctly blocked')
+            testsPassed++
+        } else {
+            logError(`Unexpected error: ${error.message}`)
+            testsFailed++
+        }
+    }
+
+    // Test 10: Can still deposit while having pending withdrawal
+    logTest('Test 10: Depositing while having pending withdrawal')
+    try {
+        const depositTx = await smartChefNative.deposit({
+            value: TEST_CONFIG.SMALL_DEPOSIT,
+            gasLimit: 500000
+        })
+        await depositTx.wait()
+
+        const userInfo = await smartChefNative.userInfo(wallet.address)
+        logSuccess(`Deposit successful while pending withdrawal exists`)
+        logInfo(`Active stake: ${quais.formatQuai(userInfo.amount)} QUAI`)
+        testsPassed++
+    } catch (error) {
+        logError(`Deposit with pending withdrawal failed: ${error.message}`)
+        testsFailed++
+    }
+
+    // Test 11: Reduce lock period and complete withdrawal
+    logTest('Test 11: Reducing lock period and completing withdrawal')
+    try {
+        const withdrawalInfoBefore = await smartChefNative.getWithdrawalInfo(wallet.address)
+
+        // Reduce lock period to 0 for testing
+        const updateLockTx = await smartChefNative.updateWithdrawalLockPeriod(0, { gasLimit: 500000 })
+        await updateLockTx.wait()
+        logInfo('Lock period reduced to 0 for testing')
+
+        // Now complete the withdrawal
+        const completeTx = await smartChefNative.completeWithdrawal({ gasLimit: 500000 })
+        await completeTx.wait()
+
+        const withdrawalInfoAfter = await smartChefNative.getWithdrawalInfo(wallet.address)
+
+        // Check that withdrawal was completed
+        if (withdrawalInfoAfter.pendingWithdrawalAmount === 0n) {
+            logSuccess(`Withdrawal completed successfully`)
+            logInfo(`Withdrawn: ${quais.formatQuai(withdrawalInfoBefore.pendingWithdrawalAmount)} QUAI`)
+            testsPassed++
+        } else {
+            throw new Error('Withdrawal not completed')
+        }
+
+        // Restore lock period to 30 days
+        const restoreLockTx = await smartChefNative.updateWithdrawalLockPeriod(30 * 24 * 60 * 60, { gasLimit: 500000 })
+        await restoreLockTx.wait()
+        logInfo('Lock period restored to 30 days')
+    } catch (error) {
+        logError(`Complete withdrawal failed: ${error.message}`)
+        testsFailed++
+    }
+
+    // Test 12: Check solvency protection
+    logTest('Test 12: Checking solvency protection')
+    try {
+        const totalStaked = await smartChefNative.totalStaked()
+        const totalPending = await smartChefNative.totalPendingWithdrawals()
+        const rewardBalance = await smartChefNative.getRewardBalance()
+        const contractBalance = await provider.getBalance(contractAddress)
+
+        logInfo(`Contract balance: ${quais.formatQuai(contractBalance)} QUAI`)
+        logInfo(`Total staked: ${quais.formatQuai(totalStaked)} QUAI`)
+        logInfo(`Total pending withdrawals: ${quais.formatQuai(totalPending)} QUAI`)
+        logInfo(`Reward balance: ${quais.formatQuai(rewardBalance)} QUAI`)
+
+        if (contractBalance >= totalStaked + totalPending) {
+            logSuccess('Solvency maintained: balance >= totalStaked + totalPendingWithdrawals')
+            testsPassed++
+        } else {
+            throw new Error('Solvency violation detected')
+        }
+    } catch (error) {
+        logError(`Solvency check failed: ${error.message}`)
+        testsFailed++
+    }
+
+    // Test 13: Update reward rate (admin function)
+    logTest('Test 13: Updating APY (admin function)')
+    try {
+        const newAPY = 500 // 5% APY in basis points
         const updateTx = await smartChefNative.updateRewardPerBlock(newAPY, { gasLimit: 500000 })
         await updateTx.wait()
 
@@ -297,41 +418,18 @@ async function deploySmartChefNative() {
         testsFailed++
     }
 
-    // Test 9: Check solvency protection
-    logTest('Test 9: Checking solvency protection')
+    // Test 14: Get withdrawal info
+    logTest('Test 14: Getting withdrawal info')
     try {
-        const totalStaked = await smartChefNative.totalStaked()
-        const rewardBalance = await smartChefNative.getRewardBalance()
-        const contractBalance = await provider.getBalance(contractAddress)
+        const withdrawalInfo = await smartChefNative.getWithdrawalInfo(wallet.address)
 
-        logInfo(`Contract balance: ${quais.formatQuai(contractBalance)} QUAI`)
-        logInfo(`Total staked: ${quais.formatQuai(totalStaked)} QUAI`)
-        logInfo(`Reward balance: ${quais.formatQuai(rewardBalance)} QUAI`)
-
-        if (contractBalance >= totalStaked) {
-            logSuccess('Solvency maintained: balance >= totalStaked')
-            testsPassed++
-        } else {
-            throw new Error('Solvency violation detected')
-        }
-    } catch (error) {
-        logError(`Solvency check failed: ${error.message}`)
-        testsFailed++
-    }
-
-    // Test 10: Get lock cycle information
-    logTest('Test 10: Getting lock cycle information')
-    try {
-        const lockInfo = await smartChefNative.getLockInfo(wallet.address)
-        const currentCycle = await smartChefNative.getCurrentCycle(wallet.address)
-
-        logSuccess('Lock info retrieved successfully')
-        logInfo(`Current cycle: ${currentCycle}`)
-        logInfo(`Can withdraw: ${lockInfo.canWithdraw}`)
-        logInfo(`In grace period: ${lockInfo.inGracePeriod}`)
+        logSuccess('Withdrawal info retrieved successfully')
+        logInfo(`Active stake: ${quais.formatQuai(withdrawalInfo.activeStake)} QUAI`)
+        logInfo(`Pending withdrawal: ${quais.formatQuai(withdrawalInfo.pendingWithdrawalAmount)} QUAI`)
+        logInfo(`Can complete: ${withdrawalInfo.canComplete}`)
         testsPassed++
     } catch (error) {
-        logError(`Get lock info failed: ${error.message}`)
+        logError(`Get withdrawal info failed: ${error.message}`)
         testsFailed++
     }
 
@@ -360,8 +458,7 @@ async function deploySmartChefNative() {
     console.log(`Contract Address: ${contractAddress}`)
     console.log(`Network: ${hre.network.name}`)
     console.log(`Block Time: ${await smartChefNative.blockTime()} seconds`)
-    console.log(`Lock Period: 30 days`)
-    console.log(`Grace Period: 24 hours`)
+    console.log(`Withdrawal Lock Period: ${Number(await smartChefNative.withdrawalLockPeriod()) / 86400} days`)
 
     return testsFailed === 0
 }
